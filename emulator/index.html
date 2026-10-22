@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WereBOX — Sistemas Retrô no Navegador</title>
+<link rel="stylesheet" href="ui/estilo.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ------------------------------------------------- barra de ferramentas -->
+  <header id="barra">
+    <span id="marca">WereBOX</span>
+
+    <nav id="abas">
+      <button id="aba-machine" class="aba" aria-haspopup="true" aria-expanded="false">Machine <span class="seta">▾</span></button>
+    </nav>
+
+    <span class="separador"></span>
+    <span class="rapidos">
+      <button data-cmd="ver">ver</button>
+      <button data-cmd="dir">dir</button>
+      <button data-cmd="mem">mem</button>
+    </span>
+
+    <span class="separador"></span>
+    <span id="status">carregando…</span>
+
+    <span class="cresce"></span>
+    <button id="btn-pausa" title="pausar a máquina">⏸</button>
+    <button id="btn-reset" title="reiniciar a máquina">⟳</button>
+    <button id="btn-full" title="tela cheia">⛶</button>
+  </header>
+
+  <!-- ------------------------------------------------------ menu da aba Machine -->
+  <div id="menu-machine" class="menu" hidden>
+    <div class="menu-titulo">Machine</div>
+    <button data-painel="config">⚙ <span>Configuração</span></button>
+    <button id="btn-escolher-sistema">🧭 <span>Escolher sistema (reiniciar)</span></button>
+
+    <div class="menu-sep">Avançado</div>
+    <button data-painel="seguranca">🔬 <span>Avançado</span></button>
+
+    <div class="menu-sep">Snapshots</div>
+    <button data-painel="snap-novo">📷 <span>Criar snapshot</span></button>
+    <button data-painel="snap-lista">🕘 <span>Selecionar snapshot</span></button>
+
+    <div class="menu-sep"></div>
+    <button data-painel="arquivos">🗂 <span>Gerenciador de arquivos</span></button>
+
+    <div class="menu-sep"></div>
+    <button data-painel="logs">📜 <span>Mostrar logs</span></button>
+  </div>
+
+  <!-- ------------------------------------------------------------ a tela do PC -->
+  <main id="palco">
+    <div id="tela-area">
+      <!-- a estrutura que o v86 espera: um <div> (texto) e um <canvas> (fonte VGA/gráfico) -->
+      <div id="screen">
+        <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+        <canvas></canvas>
+      </div>
+    </div>
+  </main>
+
+  <!-- ---------------------------------------------------------------- gaveta -->
+  <aside id="gaveta" hidden>
+    <header id="gaveta-topo">
+      <h2 id="gaveta-titulo">…</h2>
+      <button id="gaveta-fechar" title="fechar (Esc)">✕</button>
+    </header>
+    <div id="gaveta-corpo"></div>
+  </aside>
+
+  <div id="aviso" hidden></div>
+</div>
+
+<script src="libv86.js"></script>
+<script type="module" src="ui/app.mjs"></script>
+</body>
+</html>

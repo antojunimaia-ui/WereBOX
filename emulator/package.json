@@ -1,0 +1,22 @@
+{
+  "name": "werebox-emulator",
+  "version": "0.3.0",
+  "description": "WereBOX — Máquinas virtuais e sistemas operacionais retrô no navegador",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/setup-v86.mjs && node tools/serve.mjs",
+    "v86": "node tools/setup-v86.mjs",
+    "grub": "node tools/mk-grub.mjs",
+    "mkdisk": "node tools/mkdisk.mjs",
+    "mouse": "node tools/instalar-mouse.mjs",
+    "serve": "node tools/serve.mjs",
+    "autoral": "node autoral/redos.mjs",
+    "manifest": "node autoral/tools/manifest.mjs",
+    "test": "node autoral/tests/run.js",
+    "test:fat": "node tests/fat.test.mjs",
+    "test:tudo": "node autoral/tests/run.js && node tests/fat.test.mjs"
+  },
+  "dependencies": {
+    "v86": "^0.5.471"
+  }
+}

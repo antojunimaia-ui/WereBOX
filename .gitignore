@@ -1,0 +1,17 @@
+# Dependências do Node
+node_modules/
+emulator/node_modules/
+package-lock.json
+
+# Arquivos e imagens pesadas (+100MB não aceitos pelo GitHub)
+Systems/Windows 95/
+
+# Logs e arquivos temporários do sistema
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Snapshots locais do emulador
+emulator/snapshots/
+*.v86state

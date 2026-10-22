@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>reDOS — MS-DOS 6.22 no navegador</title>
+<style>
+  :root { --fg:#c8c8c8; --dim:#6a6a6a; --line:#242424; --scan:2px; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:#0b0b0c; color:var(--fg);
+    font:13px/1.5 "Consolas","DejaVu Sans Mono",monospace; }
+  #app { min-height:100%; display:flex; flex-direction:column; }
+  header { padding:12px 16px; border-bottom:1px solid var(--line); display:flex;
+    align-items:baseline; gap:14px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:15px; color:#fff; letter-spacing:.5px; }
+  header .sub { color:var(--dim); font-size:11.5px; }
+  main { flex:1; display:flex; justify-content:center; align-items:center; padding:18px 12px 6px; }
+  .crt { position:relative; border:1px solid #333; border-radius:6px; overflow:hidden;
+    box-shadow:0 0 0 1px #000, 0 18px 60px -20px #000 inset, 0 0 40px -12px #0af3; background:#000; }
+  canvas { display:block; image-rendering:pixelated; outline:none; }
+  .crt::after { content:""; position:absolute; inset:0; pointer-events:none;
+    background-image:repeating-linear-gradient(180deg,
+      rgba(0,0,0,0) 0, rgba(0,0,0,0) var(--scan,2px),
+      rgba(0,0,0,.14) var(--scan,2px), rgba(0,0,0,.14) calc(var(--scan,2px) * 2)); }
+  footer { padding:8px 16px 18px; color:var(--dim); font-size:11.5px;
+    display:flex; gap:16px; flex-wrap:wrap; align-items:center; justify-content:center; }
+  button { font:inherit; background:#161616; color:var(--fg); border:1px solid #333;
+    border-radius:4px; padding:4px 12px; cursor:pointer; }
+  button:hover { background:#1f1f1f; color:#fff; }
+  label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .ok { color:#7ddc7d; } .warn { color:#e8c46b; } .err { color:#ff6b6b; }
+  #err { max-width:900px; margin:0 auto 14px; padding:10px 14px; border:1px solid #5a2222;
+    border-radius:6px; background:#1a0f0f; color:#ffb3b3; display:none; white-space:pre-wrap; }
+  #err a { color:#8fd0ff; }
+
+  /* --- tela cheia (Fullscreen API, com plano B em CSS) --- */
+  #app:fullscreen, #app.pseudo { display:flex; flex-direction:column; background:#000; }
+  #app.pseudo { position:fixed; inset:0; z-index:9999; }
+  #app:fullscreen header, #app:fullscreen footer,
+  #app.pseudo header,     #app.pseudo footer     { display:none; }
+  #app:fullscreen main,   #app.pseudo main       { padding:0; }
+  #app:fullscreen .crt,   #app.pseudo .crt       { border:0; border-radius:0; box-shadow:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>reDOS</h1>
+    <span class="sub">MS-DOS 6.22 real no navegador — emulador 8086 + DOS próprio (sem DOSBox, sem js-dos)</span>
+  </header>
+
+  <div id="err"></div>
+
+  <main>
+    <div class="crt">
+      <canvas id="screen" width="720" height="400" tabindex="0"></canvas>
+    </div>
+  </main>
+
+  <footer>
+    <span id="status">carregando…</span>
+    <label><input type="checkbox" id="autoexec" checked> AUTOEXEC.BAT</label>
+    <button id="fullscreen" title="tela cheia (ESC sai)">⛶ tela cheia</button>
+    <button id="reset">reiniciar</button>
+    <span id="hint">clique na tela e digite (EXIT encerra o DOS) · duplo clique = tela cheia</span>
+  </footer>
+</div>
+
+<script type="module">
+import { Machine } from "../src/machine.js";
+import { keyCode, INPUT_WAIT } from "../src/dos.js";
+
+const PAL = ["#000000","#0000aa","#00aa00","#00aaaa","#aa0000","#aa00aa","#aa5500","#aaaaaa",
+             "#555555","#5555ff","#55ff55","#55ffff","#ff5555","#ff55ff","#ffff55","#ffffff"];
+const EXTRACTED = "../../../Systems/MS-DOS%206.22/extracted/";
+const FILELIST = "files.json";                // gerado por tools/manifest.mjs
+const SLICE = 20000;                          // passos de CPU por fatia interna
+const FRAME_MS = 12;                          // orçamento de CPU por quadro (~60fps)
+
+const app = document.getElementById("app");
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const errEl = document.getElementById("err");
+const cxEl = document.getElementById("autoexec");
+const fsBtn = document.getElementById("fullscreen");
+
+// O núcleo pausa sozinho quando um programa pede teclado (INPUT_WAIT, com o IP
+// rebobinado para reexecutar o INT): aqui só marcamos a entrada como interativa.
+let m = null, waiting = true, finished = false, fatalMsg = "", frames = 0;
+
+// ---- tamanho do canvas: 80x25 em qualquer resolução, texto sempre nítido ---
+// Desenhamos já no tamanho final (o canvas é escalado em pixels reais), então
+// não há interpolação: as colunas ficam múltiplas de 80 e as linhas de 25.
+function isFullscreen() {
+  return document.fullscreenElement === app || app.classList.contains("pseudo");
+}
+function fitCanvas() {
+  const full = isFullscreen();
+  const availW = window.innerWidth - (full ? 0 : 48);
+  const availH = window.innerHeight - (full ? 0 : 150);
+  let scale = Math.min(availW / 720, availH / 400);
+  if (!full) scale = Math.min(scale, 1);            // na janela não amplia
+  scale = Math.max(scale, 0.35);
+  // múltiplos inteiros de 80 colunas / 25 linhas (floor: nunca estoura a janela)
+  const w = Math.max(320, Math.floor(720 * scale / 80) * 80);
+  const h = Math.max(100, Math.floor(w * 400 / 720 / 25) * 25);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    document.documentElement.style.setProperty("--scan", Math.max(1, Math.round(h / 25 / 8)) + "px");
+  }
+  draw(true);
+}
+
+// ---- desenho do texto 80x25 (só repinta quando a VRAM muda) ----------------
+let lastBlink = -1;
+function draw(force = false) {
+  if (!m) { // sem máquina ainda: só limpa a tela
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height); return;
+  }
+  m.video.syncFromMem();                     // captura desenho direto na VRAM
+  const blink = (frames >> 4) & 1;
+  if (!force && !m.video.dirty && !(waiting && blink !== lastBlink)) return;
+  m.video.dirty = false; lastBlink = blink;
+
+  const CW = canvas.width / 80, CH = canvas.height / 25;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${Math.round(CH * 0.94)}px "Consolas","DejaVu Sans Mono",monospace`;
+  ctx.textBaseline = "top";
+  const dx = Math.round(CW * 0.08);
+  const cells = m.video.cells, attrs = m.video.attrs;
+  for (let r = 0; r < 25; r++) {
+    const row = cells[r], ar = attrs[r];
+    const y = Math.round(r * CH), y2 = Math.round((r + 1) * CH);
+    for (let c = 0; c < 80; c++) {
+      const attr = ar[c] & 0xff, bg = (attr >> 4) & 0x0f, fg = attr & 0x0f;
+      const ch = row[c];
+      const x = Math.round(c * CW), x2 = Math.round((c + 1) * CW);
+      if (bg) { ctx.fillStyle = PAL[bg]; ctx.fillRect(x, y, x2 - x, y2 - y); }
+      if (ch && ch !== 32) { ctx.fillStyle = PAL[fg] || "#aaa"; ctx.fillText(String.fromCharCode(ch), x + dx, y); }
+    }
+  }
+  if (waiting && !finished && blink === 0) { // cursor
+    const ch = Math.max(2, Math.round(CH * 0.12));
+    ctx.fillStyle = "#c8c8c8";
+    ctx.fillRect(Math.round(m.video.cx * CW), Math.round((m.video.cy + 1) * CH) - ch, Math.max(2, Math.round(CW) - 1), ch);
+  }
+}
+
+function setStatus(extra = "") {
+  const steps = m ? m.cpu.steps.toLocaleString("pt-BR") : "0";
+  const st = fatalMsg ? `<span class="err">falha</span>`
+    : finished ? `<span class="warn">DOS encerrado</span>`
+    : waiting ? `<span class="ok">aguardando tecla</span>` : "rodando";
+  statusEl.innerHTML = `${st} · ${steps} passos · ${extra}`;
+}
+
+function fail(msg) {
+  fatalMsg = msg;
+  waiting = true;
+  errEl.style.display = "block";
+  errEl.textContent = msg;
+  setStatus();
+}
+
+// ---- laço de execução ------------------------------------------------------
+function frame() {
+  frames++;
+  if (!m || fatalMsg) { draw(); requestAnimationFrame(frame); return; }
+  if (!waiting && !finished) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < FRAME_MS) {
+      const before = m.cpu.steps;
+      let r;
+      try { r = m.run(SLICE); }
+      catch (e) {
+        if (e === INPUT_WAIT) { waiting = true; break; }
+        fail("Falha do núcleo emulando a CPU/DOS: " + e.message); break;
+      }
+      if (r.exited || r.halted || m.cpu.steps === before) {
+        finished = r.exited || r.halted;
+        waiting = true;
+        break;
+      }
+    }
+  }
+  draw(); if (frames % 12 === 0) setStatus();
+  requestAnimationFrame(frame);
+}
+
+// ---- tela cheia ------------------------------------------------------------
+function fsLabel() {
+  fsBtn.textContent = isFullscreen() ? "⛶ sair da tela cheia" : "⛶ tela cheia";
+}
+// Tela cheia à prova de falha: pedimos a Fullscreen API, mas se ela não
+// responder (ou for negada), caímos num "pseudo fullscreen" em CSS. Nunca
+// ficamos esperando a promise — um timeout decide.
+function toggleFullscreen() {
+  if (isFullscreen()) {                       // sair
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+    app.classList.remove("pseudo");
+    fsLabel(); fitCanvas(); canvas.focus();
+    return;
+  }
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    if (document.fullscreenElement !== app) app.classList.add("pseudo"); // API não aplicou
+    fsLabel(); fitCanvas(); canvas.focus();
+  };
+  try {
+    const p = app.requestFullscreen ? app.requestFullscreen() : null;
+    if (p && typeof p.then === "function") p.then(settle, settle);
+    else settle();
+  } catch (e) { settle(); }
+  setTimeout(settle, 400);                    // API muda mas não responde: plano B
+}
+fsBtn.addEventListener("click", toggleFullscreen);
+canvas.addEventListener("dblclick", toggleFullscreen);
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement === app) app.classList.remove("pseudo"); // nativo assumiu
+  fsLabel(); fitCanvas(); canvas.focus();
+});
+window.addEventListener("resize", () => fitCanvas());
+
+// ---- teclado ---------------------------------------------------------------
+const SPECIAL = {
+  Enter: 0x1c0d, Backspace: 0x0e08, Escape: 0x011b, Tab: 0x0f09, " ": 0x3920,
+  ArrowUp: 0x4800, ArrowDown: 0x5000, ArrowLeft: 0x4b00, ArrowRight: 0x4d00,
+  Home: 0x4700, End: 0x4f00, PageUp: 0x4900, PageDown: 0x5100, Delete: 0x5300,
+  Insert: 0x5200,
+  F1: 0x3b00, F2: 0x3c00, F3: 0x3d00, F4: 0x3e00, F5: 0x3f00, F6: 0x4000,
+  F7: 0x4100, F8: 0x4200, F9: 0x4300, F10: 0x4400,
+};
+window.addEventListener("keydown", (e) => {
+  if (!m || fatalMsg || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Escape" && isFullscreen()) {           // ESC sai da tela cheia
+    if (app.classList.contains("pseudo")) { e.preventDefault(); toggleFullscreen(); }
+    return;                                             // tela cheia nativa: deixa o navegador sair
+  }
+  let code = SPECIAL[e.key];
+  if (code == null && e.key.length === 1) code = keyCode(e.key.charCodeAt(0));
+  if (code == null) return;
+  e.preventDefault();
+  m.state.keys.push(code);
+  if (waiting && !finished) { waiting = false; setStatus(); } // acorda a CPU
+}, { passive: false });
+canvas.addEventListener("click", () => canvas.focus());
+
+// ---- boot ------------------------------------------------------------------
+async function boot() {
+  errEl.style.display = "none"; fatalMsg = ""; finished = false; waiting = false;
+  const manifest = await (await fetch(FILELIST, { cache: "no-store" })).json();
+  const machine = new Machine();
+  let bytes = 0;
+  for (const name of manifest.files) {
+    const res = await fetch(EXTRACTED + name, { cache: "no-store" });
+    if (!res.ok) throw new Error(`nao consegui buscar ${name} (HTTP ${res.status})`);
+    const b = new Uint8Array(await res.arrayBuffer());
+    machine.mountFile(name, b);
+    bytes += b.length;
+  }
+  if (!cxEl.checked) machine.mountFile("AUTOEXEC.BAT", new Uint8Array(0));
+  const cmd = await (await fetch(EXTRACTED + "COMMAND.COM", { cache: "no-store" })).arrayBuffer();
+  machine.loadCom(new Uint8Array(cmd));
+  // o canvas e' a unica tela: quem ecoa o que digitamos e' o proprio DOS
+  machine.state.echoInput = true;
+  machine.state.interactive = true; // pausa esperando tecla em vez de "inventar" Enter
+  m = machine; frames = 0;
+  canvas.focus(); // já aceita teclado sem precisar clicar
+  setStatus(`${manifest.files.length} arquivos, ${(bytes / 1024).toFixed(0)} KB em C:`);
+}
+
+// acesso para inspeção no console do navegador (redos.state, redos.cpu, redos.machine)
+window.redos = {
+  get machine() { return m; },
+  get state() { return m && m.state; },
+  get cpu() { return m && m.cpu; },
+  get text() { return m && m.text; },
+  fit: fitCanvas,
+  fullscreen: toggleFullscreen,
+};
+
+document.getElementById("reset").onclick = async () => {
+  try { await boot(); waiting = false; } catch (e) { fail(e.message); }
+};
+
+(async () => {
+  fsLabel(); fitCanvas();
+  try { await boot(); waiting = false; }
+  catch (e) {
+    fail(`${e.message}\n\nSirva a raiz do reDOS e abra emulator/web/:\n` +
+         `  cd C:\\Users\\Cliente\\reDOS\n  python -m http.server 8080\n  http://localhost:8080/emulator/web/`);
+  }
+  fitCanvas();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

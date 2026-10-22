@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>reDOS · bancada: preparar o disco C:</title>
+<style>
+  :root { --fg:#c8c8c8; --dim:#6a6a6a; --line:#242424; --accent:#ffb000; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; min-height:100%; background:#0b0b0c; color:var(--fg);
+    font:13px/1.5 "Consolas","DejaVu Sans Mono",monospace; }
+  header { padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0 0 4px; font-size:15px; color:#fff; }
+  header .sub { color:var(--dim); font-size:11.5px; }
+  main { padding:16px; display:flex; flex-direction:column; gap:14px; align-items:flex-start; }
+  #screen { border:1px solid #333; border-radius:6px; overflow:hidden; background:#000; width:720px; max-width:100%; }
+  #screen canvas { display:block; width:100% !important; height:auto !important; image-rendering:pixelated; }
+  #screen > div { white-space:pre !important; font:14px/14px "Consolas",monospace !important; }
+  pre#log { width:min(1100px,100%); max-height:300px; overflow:auto; margin:0; padding:10px 12px;
+    border:1px solid var(--line); border-radius:6px; background:#101012; color:#bfe3bf; white-space:pre-wrap; }
+  footer { padding:0 16px 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; color:var(--dim); font-size:11.5px; }
+  button { font:inherit; background:#161616; color:var(--fg); border:1px solid #333; border-radius:4px;
+    padding:5px 12px; cursor:pointer; }
+  button:hover { background:#1f1f1f; color:#fff; }
+  button.principal { color:var(--accent); border-color:#4a3a1a; }
+  a { color:#8fd0ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>reDOS · bancada: preparar o disco <b>C:</b></h1>
+  <div class="sub">Este utilitário sobe o MS-DOS 6.22 real (disquete de boot da ISO) com um disco em branco
+    (<code>Systems/MS-DOS 6.22/novo.img</code>, gerado por <code>tools/mkdisk.mjs</code>) e deixa o
+    <b>próprio DOS</b> formatar e instalar: <code>FORMAT C: /S</code> + <code>XCOPY</code>. A imagem pronta
+    sai em <code>Systems/MS-DOS 6.22/c.img</code>. Rode <code>npm run serve</code> (o endpoint de
+    gravação só existe nele).</div>
+</header>
+
+<main>
+  <div id="screen">
+    <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+    <canvas></canvas>
+  </div>
+  <pre id="log">carregando…</pre>
+</main>
+
+<footer>
+  <button id="go" class="principal" disabled>preparar o disco C:</button>
+  <button id="baixar" disabled>baixar imagem</button>
+  <span id="status"></span>
+</footer>
+
+<script src="libv86.js"></script>
+<script>
+"use strict";
+
+const screenEl = document.getElementById("screen");
+const logEl = document.getElementById("log");
+const statusEl = document.getElementById("status");
+const goBtn = document.getElementById("go");
+const dlBtn = document.getElementById("baixar");
+
+let em = null;
+let linhasLog = [];
+let ultimaImagem = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ritmo entre teclas: mandar a linha inteira de uma vez estoura o buffer do
+// controlador de teclado do PC (o v86 perde o resto da linha)
+const digitar = async (t) => { if (em) await em["keyboard_send_text"](t, 12); };
+function log(msg) {
+  linhasLog.push(msg);
+  logEl.textContent = linhasLog.join("\n");
+  logEl.scrollTop = logEl.scrollHeight;
+}
+const linhas = () => em.screen_adapter.get_text_screen().map((s) => s.replace(/\s+$/, "")).filter((s) => s.trim() !== "");
+const texto = () => linhas().join("\n");
+// prompt = ultima linha exatamente "X:\>" (nada depois); por isso o $ no fim
+const noPrompt = () => /^[A-Z]:\\>\s*$/.test(linhas()[linhas().length - 1] || "");
+
+async function esperarTexto(sub, ms, resposta) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (texto().includes(sub)) { if (resposta) await digitar(resposta); return true; }
+    await sleep(250);
+  }
+  log(`  !! nao vi "${sub}" em ${(ms / 1000)}s`);
+  return false;
+}
+async function esperarPrompt(ms, aoVer = []) {
+  const t0 = Date.now();
+  let anterior = "", estavel = 0;
+  const disparados = new Set();
+  while (Date.now() - t0 < ms) {
+    const t = texto();
+    for (const [sub, resposta] of aoVer) {
+      if (!disparados.has(sub) && t.includes(sub)) { disparados.add(sub); await digitar(resposta); estavel = 0; }
+    }
+    if (t === anterior) estavel += 250; else { estavel = 0; anterior = t; }
+    if (estavel >= 500 && noPrompt()) return true;   // tela parada E prompt no fim = comando terminou
+    await sleep(250);
+  }
+  log(`  !! o prompt nao voltou em ${(ms / 1000)}s`);
+  return false;
+}
+// o HD (hda = IDE primario master) vive num ArrayBuffer nosso: e ele que salvamos
+function acharHda() {
+  try {
+    const buf = em.v86.cpu.devices.ide.primary.master.buffer.buffer;
+    return buf && buf.byteLength ? buf : null;
+  } catch (e) { return null; }
+}
+
+/* ------------------------------------------------------------------ boot */
+function boot() {
+  linhasLog = [];
+  log("subindo o PC (disquete de boot + disco em branco + CD)…");
+  em = new V86({
+    wasm_path: "v86.wasm",
+    memory_size: 32 * 1024 * 1024,
+    vga_memory_size: 2 * 1024 * 1024,
+    bios: { url: "seabios.bin" },
+    vga_bios: { url: "vgabios.bin" },
+    fda: { url: "../Systems/MS-DOS%206.22/msdos622.img" },  // MS-DOS 6.22 real (A:)
+    hda: { url: "../Systems/MS-DOS%206.22/novo.img" },      // disco em branco com a particao FAT16
+    cdrom: { url: "../Systems/MS-DOS%206.22/dos622.iso" },  // a ISO (vira R: via cd1.SYS + MSCDEX)
+    boot_order: 0x321,                 // disquete -> HD -> CD
+    autostart: true,
+    screen_container: screenEl,
+    screen: { use_graphical_text: true, encoding: "cp437" },
+  });
+  em.add_listener("emulator-started", async () => {
+    statusEl.textContent = "bootando…";
+    try {
+      const g = em.v86.cpu.devices.ide.primary.master.get_disk_geometry();
+      log(`geometria que o v86 deduziu: ${g.cylinders} cilindros x ${g.heads} cabeças x ${g.sectors} setores (tradução ${["nenhuma", "lba", "large"][g.translation]})`);
+      if (g.heads !== 16 || g.sectors !== 63) log("  !! geometria inesperada — rode `npm run mkdisk` de novo (o disco tem que fechar em cilindro inteiro)");
+    } catch (e) { log("  (não consegui ler a geometria: " + e.message + ")"); }
+    if (await esperarTexto("A:\\>", 90000)) {
+      log("MS-DOS 6.22 no ar (prompt A:\\)");
+      statusEl.textContent = "pronto para preparar";
+      goBtn.disabled = false;
+    }
+  });
+}
+
+// manda um comando e espera o prompt voltar (espera o eco da linha antes de olhar a estabilidade)
+async function comando(cmd, ms = 60000) {
+  const antes = texto();
+  await digitar(cmd + "\n");
+  const t0 = Date.now();
+  while (Date.now() - t0 < 3000 && texto() === antes) await sleep(100);
+  return esperarPrompt(ms);
+}
+
+/* --------------------------------------------------------------- o preparo */
+const confere = (rotulo, cond, extra) => log(`   ${cond ? "ok   " : "FALHA"} ${rotulo}${extra ? " — " + extra : ""}`);
+
+async function preparar() {
+  linhasLog = [];
+  goBtn.disabled = true;
+  dlBtn.disabled = true;
+  const t0 = Date.now();
+  try {
+    if (!em) throw new Error("o emulador nao esta rodando");
+    if (!(await esperarTexto("A:\\>", 30000))) return linhasLog;
+
+    // 0) FDISK /MBR — grava o MBR padrao do MS-DOS (o que chainload da particao ativa)
+    await comando("fdisk /mbr", 30000);
+    confere("0/6 fdisk /mbr", true);
+
+    // 1) FORMAT C: /S — setor de boot, FATs, raiz e os arquivos de sistema
+    await digitar("format c: /s\n");
+    await esperarTexto("Proceed with Format", 30000, "y\n");
+    await esperarTexto("Volume label", 90000, "REDOS\n");
+    await esperarPrompt(90000, [["Format another", "n\n"]]);
+    const resumo = linhas().slice(-6, -1);
+    confere("1/6 format c: /s", texto().includes("bytes available on disk"), resumo.join(" | "));
+
+    // 2) todos os binarios da ISO em C:\DOS
+    await comando("md c:\\dos");
+    await comando("xcopy a:\\*.* c:\\dos\\ /s", 240000);
+    const copiados = linhas().slice(-3, -1).join(" | ");
+    confere("2/6 xcopy a:\\*.* c:\\dos\\", /file\(s\)/i.test(copiados), copiados);
+
+    // 3) CONFIG.SYS + AUTOEXEC.BAT do C: (o disco tem que ser autossuficiente)
+    const config = [
+      "DEVICE=C:\\DOS\\HIMEM.SYS",
+      "DEVICE=C:\\DOS\\CD1.SYS /D:banana",
+      "FILES=30",
+      "BUFFERS=20",
+      "LASTDRIVE=Z",
+    ];
+    const autoexec = [
+      "@echo off",
+      "PROMPT $P$G",
+      "PATH C:\\DOS",
+      "MSCDEX.EXE /D:banana /L:R",
+      "DOSKEY.COM",
+      "MOUSE.COM",          // driver PS/2 do 6.22 (ja' veio no XCOPY) -> INT 33h no boot
+    ];
+    let primeiro = true;
+    for (const l of config) { await digitar(`echo ${l}${primeiro ? ">" : ">>"} c:\\config.sys\n`); primeiro = false; await sleep(450); }
+    primeiro = true;
+    for (const l of autoexec) { await digitar(`echo ${l}${primeiro ? ">" : ">>"} c:\\autoexec.bat\n`); primeiro = false; await sleep(450); }
+    await esperarPrompt(15000);
+    log("3/6 C:\\CONFIG.SYS e C:\\AUTOEXEC.BAT escritos");
+
+    // 4) conferencia dentro do proprio DOS
+    await comando("dir c:\\dos");
+    const listagem = linhas().slice(-3).join(" | ");
+    confere("4/6 dir c:\\dos", /file\(s\)/i.test(listagem), listagem);
+
+    await comando("type c:\\config.sys");
+    const configLido = linhas().slice(-6, -1);
+    confere("4/6 type c:\\config.sys", texto().includes("HIMEM.SYS"), configLido[0]);
+
+    await comando("type c:\\autoexec.bat");
+    const autoexecLido = linhas().slice(-7, -1);
+    confere("4/6 type c:\\autoexec.bat", texto().includes("MOUSE.COM"), autoexecLido.join(" | "));
+
+    await comando("dir c:\\");
+    const naRaizOk = linhas().some((l) => /COMMAND\s+COM/.test(l)) && linhas().some((l) => /AUTOEXEC\s+BAT/.test(l));
+    confere("4/6 raiz do C: (COMMAND.COM + AUTOEXEC.BAT)", naRaizOk, linhas().slice(-4, -1).join(" | "));
+
+    // 5) salva a imagem (o mesmo ArrayBuffer que o v86 usou como HD)
+    const ab = acharHda();
+    if (!ab) { log("5/6 !! nao achei o buffer do HD"); return linhasLog; }
+    ultimaImagem = ab;
+    try {
+      const caminhoC = "Systems/MS-DOS 6.22/c.img";
+      const r = await fetch(`/emulator/__save?name=${encodeURIComponent(caminhoC)}`, { method: "POST", body: ab });
+      log(`5/6 imagem salva em ${caminhoC} — ${await r.text()} (${(ab.byteLength / 1048576).toFixed(1)} MB)`);
+    } catch (e) {
+      log(`5/6 nao consegui gravar pelo servidor (${e.message}); use o botao "baixar imagem"`);
+    }
+    dlBtn.disabled = false;
+    log(`pronto em ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    log("ERRO: " + e.message);
+  } finally {
+    goBtn.disabled = false;
+  }
+  return linhasLog;
+}
+
+goBtn.addEventListener("click", preparar);
+dlBtn.addEventListener("click", () => {
+  if (!ultimaImagem) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ultimaImagem], { type: "application/octet-stream" }));
+  a.download = "c.img";
+  a.click();
+});
+
+boot();
+window.redos = { get emulator() { return em; }, preparar, get tela() { return linhas(); } };
+</script>
+</body>
+</html>

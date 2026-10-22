@@ -1,0 +1,109 @@
+{
+  "systems": [
+    {
+      "id": "grub",
+      "name": "GNU GRUB 2.06",
+      "description": "Menu de boot real: escolha entre MS-DOS 6.22 (C:), Windows 3.11 (C:), Windows 1.01 (A:) e KolibriOS (B:)",
+      "icon": "🐧",
+      "category": "boot",
+      "year": "2021",
+      "memory": 128,
+      "vga_memory": 8,
+      "bootloader": "grub",
+      "config": {
+        "hda": { "url": "../Systems/GNU%20GRUB%202.06/grub-hd.img" },
+        "hdb": { "url": "../Systems/MS-DOS%206.22/c.img" },
+        "fda": { "url": "../Systems/Windows%201.01/win101.img" },
+        "fdb": { "url": "../Systems/KolibriOS/kolibri.img" },
+        "boot_order": 786
+      }
+    },
+    {
+      "id": "msdos622",
+      "name": "MS-DOS 6.22",
+      "description": "Sistema atual, ideal para análise de malware e testes",
+      "icon": "💾",
+      "category": "dos",
+      "year": "1994",
+      "memory": 32,
+      "vga_memory": 2,
+      "config": {
+        "hda": { "url": "../Systems/MS-DOS%206.22/c.img" },
+        "cdrom": { "url": "../Systems/MS-DOS%206.22/dos622.iso" },
+        "boot_order": 306
+      }
+    },
+    {
+      "id": "win101",
+      "name": "Windows 1.01",
+      "description": "Windows 1.01 sobre MS-DOS 3.3, bootando do disquete extraído de 'Windows 1.01.iso'",
+      "icon": "🪟",
+      "category": "windows",
+      "year": "1985",
+      "memory": 8,
+      "vga_memory": 2,
+      "config": {
+        "fda": { "url": "../Systems/Windows%201.01/win101.img" },
+        "boot_order": 801
+      }
+    },
+    {
+      "id": "win311",
+      "name": "Windows 3.11",
+      "description": "Windows 3.11 para Workgroups sobre MS-DOS 6.22, instalado a partir dos 7 disquetes originais no mesmo C:",
+      "icon": "🪟",
+      "category": "windows",
+      "year": "1993",
+      "memory": 16,
+      "vga_memory": 2,
+      "config": {
+        "hda": { "url": "../Systems/MS-DOS%206.22/c.img" },
+        "fda": { "url": "../Systems/Windows%203.11/win311-boot.img" },
+        "boot_order": 801
+      }
+    },
+    {
+      "id": "novaos",
+      "name": "NovaOS",
+      "description": "Sistema operacional x86 de 32 bits com interface gráfica VBE (1280×720) e kernel Multiboot (Live CD)",
+      "icon": "🪐",
+      "category": "os",
+      "year": "2024",
+      "memory": 128,
+      "vga_memory": 8,
+      "config": {
+        "cdrom": { "url": "../Systems/NovaOS/NovaOS.iso" },
+        "boot_order": 291
+      }
+    },
+    {
+      "id": "tinycore",
+      "name": "Tiny Core Linux",
+      "description": "Distribuição Linux ultraleve de 32 bits com interface gráfica FLWM e kernel x86 (Live CD)",
+      "icon": "🐧",
+      "category": "linux",
+      "year": "2024",
+      "memory": 256,
+      "vga_memory": 8,
+      "config": {
+        "cdrom": { "url": "../Systems/TinyCore/tinycore.iso" },
+        "boot_order": 291
+      }
+    },
+    {
+      "id": "kolibri",
+      "name": "KolibriOS",
+      "description": "Sistema operacional ultrarrápido escrito 100% em Assembly x86 com interface gráfica completa (Disquete 1.44 MB)",
+      "icon": "🐦",
+      "category": "os",
+      "year": "2026",
+      "memory": 128,
+      "vga_memory": 8,
+      "config": {
+        "fda": { "url": "../Systems/KolibriOS/kolibri.img" },
+        "boot_order": 801
+      }
+    }
+  ],
+  "default": "grub"
+}
