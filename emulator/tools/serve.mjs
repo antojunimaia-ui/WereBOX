@@ -16,6 +16,111 @@ const port = Number(process.env.PORT || process.argv[2] || 8123);
 // formatada pelo DOS real (FORMAT/SYS/XCOPY) e a gente grava no repo.
 const MAX_POST = 96 * 1024 * 1024;
 
+// ------------------------------------------------------------- GET /__download
+// A interface pede ao servidor para buscar um link (contorna CORS) e devolve os
+// bytes para ela gravar no FAT da maquina. Os limites evitam que o endpoint
+// vire um proxy aberto para arquivos enormes.
+const MAX_DOWNLOAD = 64 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 60000;
+
+function responder(res, status, texto) {
+  res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }).end(texto);
+}
+
+async function baixarPeloServidor(res, url) {
+  let alvo;
+  try {
+    alvo = new URL(url.searchParams.get("url") || "");
+  } catch {
+    responder(res, 400, "url invalida");
+    return;
+  }
+  if (alvo.protocol !== "http:" && alvo.protocol !== "https:") {
+    responder(res, 400, "so http:// ou https://");
+    return;
+  }
+  if (alvo.username || alvo.password) {
+    responder(res, 400, "url com usuario/senha nao e aceita");
+    return;
+  }
+
+  const pedidoMax = Number(url.searchParams.get("max"));
+  const max = Math.min(
+    Math.max(Number.isFinite(pedidoMax) && pedidoMax > 0 ? Math.floor(pedidoMax) : MAX_DOWNLOAD, 1),
+    MAX_DOWNLOAD,
+  );
+
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), DOWNLOAD_TIMEOUT_MS);
+  let resposta;
+  try {
+    resposta = await fetch(alvo, {
+      redirect: "follow",
+      signal: controle.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WereBOX/1.0",
+        accept: "*/*",
+      },
+    });
+  } catch (e) {
+    clearTimeout(relogio);
+    const abortou = e.name === "AbortError";
+    responder(res, abortou ? 504 : 502, abortou ? "tempo esgotado" : `falha ao buscar: ${e.cause?.message || e.message}`);
+    return;
+  }
+  if (!resposta.ok) {
+    clearTimeout(relogio);
+    responder(res, 502, `o servidor respondeu ${resposta.status}`);
+    return;
+  }
+
+  const declarado = Number(resposta.headers.get("content-length"));
+  if (Number.isFinite(declarado) && declarado > max) {
+    clearTimeout(relogio);
+    controle.abort();
+    responder(res, 413, `arquivo grande demais (${declarado} bytes; limite ${max})`);
+    return;
+  }
+
+  const partes = [];
+  let total = 0;
+  let estourou = false;
+  try {
+    if (resposta.body) {
+      for await (const parte of resposta.body) {
+        total += parte.length;
+        if (total > max) { estourou = true; controle.abort(); break; }
+        partes.push(Buffer.from(parte));
+      }
+    }
+  } catch (e) {
+    if (!estourou) {
+      clearTimeout(relogio);
+      const abortou = e.name === "AbortError";
+      responder(res, abortou ? 504 : 502, abortou ? "tempo esgotado" : `falha ao ler o arquivo: ${e.message}`);
+      return;
+    }
+  }
+  clearTimeout(relogio);
+  if (estourou) {
+    responder(res, 413, `arquivo grande demais (limite ${max} bytes)`);
+    return;
+  }
+
+  const corpo = Buffer.concat(partes);
+  const cabecalhos = {
+    "content-type": resposta.headers.get("content-type") || "application/octet-stream",
+    "content-length": String(corpo.length),
+    "cache-control": "no-store",
+    "x-final-url": resposta.url || alvo.href,
+  };
+  const disposicao = resposta.headers.get("content-disposition");
+  if (disposicao) cabecalhos["content-disposition"] = disposicao.replace(/[^\x20-\x7E]/g, "_");
+
+  console.log(`  [download] ${alvo.origin}${alvo.pathname} (${corpo.length} bytes)`);
+  res.writeHead(200, cabecalhos).end(corpo);
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -70,8 +175,19 @@ http.createServer((req, res) => {
     return;
   }
 
-  let p = decodeURIComponent(url.pathname);
-  if (p === "/") { res.writeHead(302, { location: "/emulator/" }).end(); return; }  // a interface mora em /emulator/
+  if (req.method === "GET" && url.pathname === "/emulator/__download") {
+    baixarPeloServidor(res, url).catch((e) => {
+      console.error(`  [download] erro inesperado: ${e.message}`);
+      if (!res.headersSent) responder(res, 500, "erro interno");
+      else res.end();
+    });
+    return;
+  }
+
+  let p;
+  try { p = decodeURIComponent(url.pathname); } catch { responder(res, 400, "url invalida"); return; }
+  // a interface mora em /emulator/; preserva a query (?system=...&download=...)
+  if (p === "/") { res.writeHead(302, { location: `/emulator/${url.search}` }).end(); return; }
   if (p.endsWith("/")) p += "index.html";
   const file = path.resolve(root, "." + p);
   if (!file.startsWith(root)) { res.writeHead(403, { "content-type": "text/plain" }).end("fora da raiz"); return; }
@@ -87,4 +203,5 @@ http.createServer((req, res) => {
 }).listen(port, "0.0.0.0", () => {
   console.log(`WereBOX — servidor escutando na porta ${port}`);
   console.log(`  interface  ->  http://localhost:${port}/emulator/`);
+  console.log(`  download   ->  /emulator/__download (proxy local; nao exponha na internet)`);
 });

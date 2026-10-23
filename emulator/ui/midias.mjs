@@ -15,6 +15,10 @@ const IMAGENS = {
 // instalado, para o botao "salvar o disco" gravar no lugar certo).
 const MIDIAS_C = [
   { chave: "c.img", arquivo: "c.img", projeto: "Systems/MS-DOS 6.22/c.img" },
+  { chave: "msdos.img", arquivo: "msdos.img", projeto: "Systems/MS-DOS 6.22/msdos.img" },
+  { chave: "novo.img", arquivo: "novo.img", projeto: "Systems/MS-DOS 6.22/novo.img" },
+  { chave: "win203.img", arquivo: "win203.img", projeto: "Systems/Windows 2.03/win203.img" },
+  { chave: "win311hd.img", arquivo: "win311hd.img", projeto: "Systems/Windows 3.11/win311hd.img" },
   { chave: "win95.img", arquivo: "win95.img", projeto: "Systems/Windows 95/win95.img" },
 ];
 
@@ -37,8 +41,11 @@ let midiaC = MIDIAS_C[0];
 
 function acharMidia(url, lista) {
   if (!url) return null;
-  const limpa = decodeURIComponent(String(url)).replace(/\\/g, "/").toLowerCase();
-  return lista.find((m) => limpa.includes(m.chave)) || null;
+  const limpa = decodeURIComponent(String(url)).replace(/\\/g, "/").toLowerCase().split(/[?#]/)[0];
+  // Compara o nome do arquivo primeiro: "msdos.img" nao pode cair no c.img
+  // so' porque o caminho nao contem "c.img".
+  const base = limpa.split("/").pop();
+  return lista.find((m) => base === m.chave) || lista.find((m) => limpa.includes(m.chave)) || null;
 }
 
 /** Ajusta o caminho de salvamento do A:/B:/C: ao perfil atual. */

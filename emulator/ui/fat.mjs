@@ -277,6 +277,9 @@ export function abrirFS(dev) {
       throw new Error(`ja existe um diretorio ${n83.completo} aqui`);
     }
     const existente = listar(clusterPai).find((e) => e.nome === n83.nome && e.ext === n83.ext && !e.diretorio);
+    // Acha o lugar na pasta ANTES de alocar clusters: se a pasta estiver cheia,
+    // nao deixa cluster pendurado (o extrator de ZIP depende disso para o rollback).
+    const livre = existente ? existente.indice : acharLivre(dir);
     if (existente) {
       liberarCadeia(existente.cluster);
       aplicarFAT();
@@ -296,7 +299,6 @@ export function abrirFS(dev) {
       escreverBytes(offCluster(c), pedaco);
     });
     const nova = montarEntrada(n83, ATTR.arquivo, novos[0] || 0, dados.length);
-    const livre = existente ? existente.indice : acharLivre(dir);
     escreverBytes(offEntrada(clusterPai, livre, dir), nova);
     return listar(clusterPai).find((e) => e.indice === livre) || null;
   }
@@ -308,6 +310,11 @@ export function abrirFS(dev) {
     if (listar(clusterPai).some((e) => e.diretorio && e.nome === n83.nome && e.ext === n83.ext)) {
       throw new Error(`${n83.completo} ja existe`);
     }
+    if (listar(clusterPai).some((e) => !e.diretorio && e.nome === n83.nome && e.ext === n83.ext)) {
+      throw new Error(`${n83.completo} ja existe como arquivo`);
+    }
+    // Acha o lugar na pasta antes de gastar o cluster do diretorio.
+    const livre = acharLivre(dir);
     const c = clusterLivre();
     if (!c) throw new Error("disco cheio");
     gravarFAT(c, fim);
@@ -316,7 +323,6 @@ export function abrirFS(dev) {
     vazio.set(montarEntrada({ nome: ".", ext: "" }, ATTR.diretorio, c, 0), 0);
     vazio.set(montarEntrada({ nome: "..", ext: "" }, ATTR.diretorio, clusterPai || 0, 0), 32);
     escreverBytes(offCluster(c), vazio);
-    const livre = acharLivre(dir);
     escreverBytes(offEntrada(clusterPai, livre, dir), montarEntrada(n83, ATTR.diretorio, c, 0));
     return listar(clusterPai).find((e) => e.indice === livre) || null;
   }

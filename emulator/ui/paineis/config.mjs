@@ -131,7 +131,8 @@ export function montar(corpo, ctx) {
   const acoes = [];
   if (discoC) {
     acoes.push(botao("⬇ baixar a imagem do C:", () => {
-      const n = baixarImagem(em, "c.img");
+      // o nome acompanha o perfil (c.img, msdos.img, win203.img, win311hd.img…)
+      const n = baixarImagem(em, null, "C");
       ctx.status(`imagem do C: baixada (${fmtBytes(n)})`);
     }));
     acoes.push(botao("💾 salvar o C: no projeto", async () => {

@@ -14,6 +14,7 @@ import * as pSeguranca from "./paineis/seguranca.mjs";
 import { BootSelector } from "./boot-selector.mjs";
 import { BootLoader } from "./boot-loader.mjs";
 import { instalarGovernador, pararGovernador, lerAlvo, definirAlvo, alvoAtual, ativarGovernador, desativarGovernador } from "./velocidade.mjs";
+import { baixarLinkParaDisco, lerPedidoDownload, paramsDaPagina, pausarMaquina, unidadeDeDownload } from "./transferencia.mjs";
 
 /* ------------------------------------------------------------------- ajustes */
 // O que pedimos ao v86. A aba "Machine > Configuração" mostra isso ao vivo.
@@ -66,6 +67,7 @@ const gavetaCorpo = $("#gaveta-corpo");
 let em = null;
 let limparPainel = null;
 let watchdogGrub = null;
+let downloadPendente = null;
 
 export const ctx = {
   get em() { return em; },
@@ -88,6 +90,53 @@ function aviso(msg, erro = true) {
   avisoEl.className = erro ? "erro" : "";
   avisoEl.hidden = !msg;
   if (msg) log(msg, erro ? "err" : "info");
+}
+
+/** baixa o arquivo pedido em ?download=... e reinicia a maquina quando terminar */
+async function processarDownloadPendente() {
+  if (!downloadPendente || !em) return;
+  const pedido = downloadPendente;
+  downloadPendente = null;
+  const config = sistemaAtual?.config || AJUSTES;
+  const unidade = pedido.unidade || unidadeDeDownload({ osAtual: ctx.osAtual, sistemaAtual, config });
+  if (!unidade) {
+    ctx.aviso("este sistema não tem disco gravável (C:/A:/B:) para receber o download");
+    log("download automático cancelado: nenhum disco gravável", "err");
+    return;
+  }
+
+  let pausou = false;
+  try {
+    ctx.status(`baixando ${pedido.url}…`);
+    log(`baixando ${pedido.url} para ${unidade}:`);
+    const r = await baixarLinkParaDisco(em, {
+      url: pedido.url,
+      unidade,
+      nome: pedido.nome,
+      antesDeGravar: async () => { pausou = await pausarMaquina(em); },
+    });
+    if (r.zip && r.extraido) {
+      log(`ZIP ${r.nomeOriginal} extraído no ${unidade}: (${r.arquivos} arquivo(s), ${r.pastas} pasta(s), ${fmtBytes(r.bytes)})`, "ok");
+      ctx.status("ZIP extraído — reiniciando a máquina", "ok");
+    } else if (r.zip && !r.extraido) {
+      const nota = r.renomeado ? ` — de "${r.nomeOriginal}"` : "";
+      log(`ZIP ${r.nomeOriginal} não extraído (${r.zipFalhou}); gravado como ${r.nome} (${r.bytes} bytes)${nota}`, "err");
+      ctx.status("ZIP gravado sem extrair — reiniciando a máquina", "ok");
+      ctx.aviso(`ZIP não extraído: ${r.zipFalhou}. O arquivo foi gravado como ${r.nome}.`);
+    } else {
+      const nota = r.renomeado ? ` — de "${r.nomeOriginal}"` : "";
+      log(`${r.nome} gravado no ${unidade}: (${fmtBytes(r.bytes)})${nota}`, "ok");
+      ctx.status(`${r.nome} baixado — reiniciando a máquina`, "ok");
+    }
+    await pausa(800);
+    ctx.reiniciar();
+    // reiniciar nao religa sozinho uma maquina que estava pausada
+    em?.run();
+  } catch (e) {
+    if (pausou) em?.run();
+    ctx.aviso(`download automático falhou: ${e.message}`);
+    log(`download automático falhou: ${e.message}`, "err");
+  }
 }
 
 /* ------------------------------------------------------------------ máquina */
@@ -159,14 +208,21 @@ function boot() {
             ? "boot do Windows 95…"
             : sistemaAtual?.id === "win311"
               ? "boot do Windows 3.11…"
-              : sistemaAtual?.id === "win101"
-                ? "boot do Windows 1.01…"
-                : "ligando o PC (SeaBIOS)…",
+              : sistemaAtual?.id === "win203"
+                ? "boot do Windows 2.03…"
+                : sistemaAtual?.id === "menuet"
+                  ? "boot do MenuetOS…"
+                  : sistemaAtual?.id === "win101"
+                  ? "boot do Windows 1.01…"
+                  : "ligando o PC (SeaBIOS)…",
     );
     logV86("firmware carregado, ligando a CPU");
     // a maquina (e os discos) acabou de ficar pronta; deixa o gerenciador
     // de arquivos tentar montar de novo se ele foi aberto cedo demais.
     definirOS(ctx.osAtual);
+    // Se a pagina foi aberta com ?download=..., o disco ja' esta' carregado:
+    // busca o arquivo, grava no FAT e reinicia.
+    processarDownloadPendente();
   });
   novoEm.add_listener("emulator-started", () => {
     if (!vivo()) return;
@@ -185,6 +241,13 @@ function boot() {
       ctx.status("boot do Windows 1.01…");
       logV86("máquina no ar (SeaBIOS → disquete MS-DOS 3.3 → WIN)");
       acompanharWin101(vivo);
+      return;
+    }
+    if (sistemaAtual?.id === "win203") {
+      definirOS("win203");
+      ctx.status("boot do Windows 2.03…");
+      logV86("máquina no ar (SeaBIOS → C: → Windows 2.03)");
+      acompanharWin203(vivo);
       return;
     }
     if (sistemaAtual?.id === "win311") {
@@ -232,6 +295,13 @@ function boot() {
       acompanharKolibri(vivo);
       return;
     }
+    if (sistemaAtual?.id === "menuet") {
+      definirOS("menuet");
+      ctx.status("boot do MenuetOS…");
+      logV86("máquina no ar (SeaBIOS → Disquete A: → MenuetOS)");
+      acompanharMenuet(vivo);
+      return;
+    }
     definirOS("msdos");
     ctx.status("boot do MS-DOS 6.22…");
     logV86("máquina no ar (SeaBIOS → MBR → IO.SYS)");
@@ -269,7 +339,7 @@ function reiniciarMaquina() {
   log("reiniciando a máquina", "warn");
   desativarGovernador(em);
   // no GRUB o menu ainda vai decidir; nos perfis diretos a máquina continua a mesma
-  definirOS(sistemaAtual?.id === "win101" ? "win101" : sistemaAtual?.id === "msdos622" ? "msdos" : null);
+  definirOS(sistemaAtual?.id === "win101" ? "win101" : sistemaAtual?.id === "win203" ? "win203" : sistemaAtual?.id === "msdos622" ? "msdos" : null);
   pararWatchdogGrub();
   em.restart();
   pintarBotaoPausa();
@@ -279,6 +349,9 @@ function reiniciarMaquina() {
   } else if (sistemaAtual?.id === "win101") {
     ctx.status("boot do Windows 1.01…");
     acompanharWin101(() => true);
+  } else if (sistemaAtual?.id === "win203") {
+    ctx.status("boot do Windows 2.03…");
+    acompanharWin203(() => true);
   } else if (sistemaAtual?.id === "win311") {
     ctx.status("boot do Windows 3.11…");
     acompanharWin311(() => true);
@@ -296,6 +369,9 @@ function reiniciarMaquina() {
   } else if (sistemaAtual?.id === "kolibri") {
     ctx.status("boot do KolibriOS…");
     acompanharKolibri(() => true);
+  } else if (sistemaAtual?.id === "menuet") {
+    ctx.status("boot do MenuetOS…");
+    acompanharMenuet(() => true);
   } else {
     ctx.status("boot do MS-DOS 6.22…");
     esperarPrompt();
@@ -430,6 +506,29 @@ function acompanharWin101(vivo = () => true) {
       if (Date.now() - graficoDesde < 5000) return;
       ctx.status("Windows 1.01 no ar", "ok");
       logV86("Windows 1.01 no ar (640×350)", "ok");
+      ativarGovernador(emLocal);
+      pararWatchdogGrub();
+    } else {
+      graficoDesde = 0;
+    }
+  }, 1000);
+}
+
+/** perfil direto do Windows 2.03: aguarda modo gráfico 640×350 / 640×480 */
+function acompanharWin203(vivo = () => true) {
+  pararWatchdogGrub();
+  const emLocal = em;
+  const inicio = Date.now();
+  let graficoDesde = 0;
+  watchdogGrub = setInterval(() => {
+    if (!vivo() || em !== emLocal || Date.now() - inicio > 240000) { pararWatchdogGrub(); return; }
+    const cv = screenEl.querySelector("canvas");
+    if (cv?.width >= 640 && modoGrafico(emLocal) && telaComConteudo(cv)) {
+      if (!graficoDesde) graficoDesde = Date.now();
+      if (Date.now() - graficoDesde < 3000) return;
+      definirOS("win203");
+      ctx.status("Windows 2.03 no ar", "ok");
+      logV86(`Windows 2.03 no ar (${cv.width}×${cv.height})`, "ok");
       ativarGovernador(emLocal);
       pararWatchdogGrub();
     } else {
@@ -573,6 +672,31 @@ function acompanharKolibri(vivo = () => true) {
     }
   }, 1000);
 }
+
+/** perfil direto do MenuetOS: aguarda modo gráfico VESA/VBE e desktop */
+function acompanharMenuet(vivo = () => true) {
+  pararWatchdogGrub();
+  const emLocal = em;
+  const inicio = Date.now();
+  let graficoDesde = 0;
+  watchdogGrub = setInterval(() => {
+    if (!vivo() || em !== emLocal || Date.now() - inicio > 120000) { pararWatchdogGrub(); return; }
+    const cv = screenEl.querySelector("canvas");
+    const grafico = (cv?.width >= 640 || modoGrafico(emLocal)) && telaComConteudo(cv);
+    if (!grafico) { graficoDesde = 0; return; }
+    if (!graficoDesde) {
+      graficoDesde = Date.now();
+      ctx.status("carregando o desktop do MenuetOS…");
+    }
+    // Aguarda o launcher descompactar todos os ícones e arquivos do disquete para a RAM
+    if (Date.now() - graficoDesde < 12000) return;
+    definirOS("menuet");
+    ctx.status("MenuetOS no ar", "ok");
+    logV86(`MenuetOS no ar (${cv?.width}×${cv?.height})`, "ok");
+    pararWatchdogGrub();
+  }, 1000);
+}
+
 
 /* ------------------------------------------------------- encaixe da tela (4:3) */
 function ajustarTela() {
@@ -775,7 +899,9 @@ function iniciarPerfil(selectedSystem) {
   definirOS(
     selectedSystem.id === "win101"
       ? "win101"
-      : selectedSystem.id === "msdos622"
+      : selectedSystem.id === "win203"
+        ? "win203"
+        : selectedSystem.id === "msdos622"
         ? "msdos"
         : selectedSystem.id === "win95" || selectedSystem.id === "win95inst"
           ? "win95"
@@ -801,7 +927,13 @@ function iniciarPerfil(selectedSystem) {
 
 /** o perfil padrao e' o GRUB real: vai direto para ele, sem a tela HTML */
 async function iniciar() {
-  const params = new URLSearchParams(location.search);
+  // Aceita ?system=msdos622&download=... e o formato compacto
+  // ?system=msdos622=download'https://...' (ver transferencia.mjs).
+  const params = paramsDaPagina(location.search);
+
+  downloadPendente = lerPedidoDownload(params);
+  if (downloadPendente) log(`download automático na fila: ${downloadPendente.url}`);
+
   const forcarMenu = params.get("menu") === "html";
   // ?system=win311 abre direto um perfil (util para testar/regerar uma midia)
   const forcado = params.get("system");

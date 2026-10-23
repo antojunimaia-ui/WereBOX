@@ -68,8 +68,8 @@ ao DOS/Windows como disco 0/`C:`; o Windows 1.01 fica no `fda`
 | Perfil (`profiles.json`) | Como boota | Mídias |
 | --- | --- | --- |
 | **GNU GRUB 2.06** (padrão) | `hda = grub-hd.img` → menu real | `hdb = c.img`, `fda = win101.img`, `cdrom = dos622.iso`, ordem `0x312` (disco → disquete → CD) |
-| **MS-DOS 6.22** | `C:` direto (MBR → IO.SYS) | `hda = c.img`, `cdrom = dos622.iso`, ordem `0x132` (disco → CD → disquete) |
-| **Windows 3.11** | `A:` de boot → `C:\WINDOWS\WIN /3` | `hda = c.img`, `fda = win311-boot.img`, ordem `0x321` (disquete primeiro) |
+| **MS-DOS 6.22** | `C:` direto (MBR → IO.SYS) | `hda = msdos.img` (cópia do `c.img`), `cdrom = dos622.iso`, ordem `0x132` (disco → CD → disquete) |
+| **Windows 3.11** | `A:` de boot → `C:\WINDOWS\WIN /3` | `hda = win311hd.img`, `fda = win311-boot.img`, ordem `0x321` (disquete primeiro) |
 | **Windows 1.01** | `A:` direto (disquete MS-DOS 3.3 → `WIN`) | `fda = win101.img`, ordem `0x321` (disquete primeiro) |
 
 Os nomes da tabela são os arquivos dentro de `Systems/`; os caminhos completos estão
@@ -108,6 +108,7 @@ dentro do v86, a partir dos sete disquetes originais em `Systems/Windows 3.11/`
 (`disk01.img` … `disk07.img`). Ele **divide o mesmo `C:` do MS-DOS 6.22**: o
 `Systems/MS-DOS 6.22/c.img` tem o `C:\WINDOWS` completo, e o `CONFIG.SYS`/`AUTOEXEC.BAT`
 do DOS carregam o `HIMEM.SYS`, o CD-ROM, o `SMARTDRV` e o mouse antes de qualquer coisa.
+No perfil direto, o `C:` é uma cópia desse disco em `Systems/Windows 3.11/win311hd.img`.
 
 No GRUB, as entradas **MS-DOS 6.22 (C:)** e **Windows 3.11 (C:)** chainloadam o mesmo
 `c.img`. A diferença é uma flag no CMOS (registro `0x0E`): a entrada do Windows grava
@@ -116,7 +117,7 @@ sai com `ERRORLEVEL 1`, fazendo o `AUTOEXEC.BAT` rodar `C:\WINDOWS\WIN /3`. A en
 MS-DOS grava `0x00` e cai no prompt `C:\>`. É assim que o mesmo disco tem dois "sistemas"
 sem duplicar a instalação.
 
-No perfil direto do Windows 3.11, o `profiles.json` usa `hda = c.img` e
+No perfil direto do Windows 3.11, o `profiles.json` usa `hda = win311hd.img` e
 `fda = win311-boot.img` (ordem `0x321`): o disquete é uma cópia do `msdos622.img` cujo
 `CONFIG.SYS`/`AUTOEXEC.BAT` carregam os drivers do `C:` e chamam `WIN /3`. O Windows
 3.11 sobe em 640×480 (VGA); o watchdog da interface reconhece esse modo e troca o
@@ -137,10 +138,10 @@ Na barra: a aba **Machine**, os comandos rápidos (`ver`, `dir`, `mem` — digit
 
 | Opção | O que faz |
 | --- | --- |
-| **Configuração** | a ficha da máquina ao vivo: estado, velocidade (M instruções/s do contador do v86), **limite de velocidade** (286/386SX/386DX/486/máxima), RAM/vídeo, **mouse** (há driver de pé?), ordem de boot, disco de boot do GRUB (`hda`), geometria/partição/FAT do `C:` (que no perfil padrão é o `hdb`), o que tem dentro do `C:`, versão do v86 e tamanho de cada arquivo (wasm, BIOS, ISO). Com botões para baixar a imagem do C:, **salvar o C: no projeto** (grava em `Systems/MS-DOS 6.22/c.img`), pausar e reiniciar. |
+| **Configuração** | a ficha da máquina ao vivo: estado, velocidade (M instruções/s do contador do v86), **limite de velocidade** (286/386SX/386DX/486/máxima), RAM/vídeo, **mouse** (há driver de pé?), ordem de boot, disco de boot do GRUB (`hda`), geometria/partição/FAT do `C:` (que no perfil padrão é o `hdb`), o que tem dentro do `C:`, versão do v86 e tamanho de cada arquivo (wasm, BIOS, ISO). Com botões para baixar a imagem do C:, **salvar o C: no projeto** (grava na imagem do perfil: `c.img`, `msdos.img`, `win203.img`, `win311hd.img`…), pausar e reiniciar. |
 | **Criar snapshot** | `em.save_state()` (RAM + dispositivos + **o disco**) num nome que você escolhe, com miniatura da tela. Dá uns 22 MB comprimidos e vai para o IndexedDB — sobrevive ao F5. |
 | **Selecionar snapshot** | a lista com miniatura, data, tamanho e o prompt que estava na tela: **restaurar**, baixar (`.v86state`) ou apagar. Também importa arquivo `.v86state`. |
-| **Gerenciador de arquivos** | os arquivos da própria máquina, no `C:` (`Systems/MS-DOS 6.22/c.img`) e no `A:` (a imagem anexada como `fda`: `win101.img` no GRUB/Windows 1.01 ou `win311-boot.img` no perfil direto do Windows 3.11): navegar, baixar, **enviar arquivo**, criar pasta e apagar — mexendo no FAT de verdade. Ele abre sozinho no disco do sistema que está rodando (C: no MS-DOS e no Windows 3.11; A: no Windows 1.01 — no GRUB, conforme a entrada escolhida) e tem botões **C:/A:** para trocar na mão (ver abaixo). |
+| **Gerenciador de arquivos** | os arquivos da própria máquina, no `C:` (`c.img` no GRUB, `msdos.img` no perfil direto do MS-DOS, `win311hd.img` no do Windows 3.11) e no `A:` (a imagem anexada como `fda`: `win101.img` no GRUB/Windows 1.01 ou `win311-boot.img` no perfil direto do Windows 3.11): navegar, baixar, **enviar arquivo**, **baixar um arquivo por link**, criar pasta e apagar — mexendo no FAT de verdade. Ele abre sozinho no disco do sistema que está rodando (C: no MS-DOS e no Windows 3.11; A: no Windows 1.01 — no GRUB, conforme a entrada escolhida) e tem botões **C:/A:** para trocar na mão (ver abaixo). |
 | **Mostrar logs** | o diário ao vivo: `reDOS` (o que a interface faz), `v86` (download das imagens, boot, tela), `console` (o console do navegador, com captura opcional) e `erro`. Com filtros por nível, busca, pausa da rolagem, copiar e baixar `.txt`. |
 
 ### Velocidade da CPU
@@ -189,9 +190,91 @@ apaga e audita a alocação (nenhum cluster perdido ou duplicado). E o teste fin
 real: os arquivos escritos pelo gerenciador aparecem no `dir c:` e saem certos no `type`.
 
 ```bash
-npm run test:fat    # 57 conferências contra Systems/MS-DOS 6.22/c.img, sem navegador
-npm run test:tudo   # + os 31 testes do emulador aposentado
+npm run test:fat       # 57 conferências contra Systems/MS-DOS 6.22/c.img, sem navegador
+npm run test:zip       # 67: extração de ZIP store/deflate/ZIP64, nomes 8.3, limites e rollback
+npm run test:download  # 71: nomes 8.3, parsing do link, gravação no C:/A: e extração de ZIP
+npm run test:midias    # 12: qual .img cada perfil salva (c.img, msdos.img, win203.img…)
+npm run test:serve     # 16: o proxy /emulator/__download contra um servidor de verdade
+npm run test:tudo      # tudo acima + os 31 testes do emulador aposentado
 ```
+
+### Baixar um arquivo por link
+
+Dá para mandar um arquivo para dentro da máquina sem baixá-lo no host: no
+**Gerenciador de arquivos**, cole o **link direto** (o que já dispara o download, não a
+página de anúncio) no campo do rodapé e clique em **⬇ baixar link** (ou tecle Enter). A
+interface pede ao próprio servidor que busque o arquivo (para contornar CORS), grava os
+bytes no FAT da unidade aberta e **reinicia a máquina** para o sistema reler o disco. O
+arquivo **não é executado no host** — ele só entra na imagem do PC emulado.
+
+O mesmo fluxo funciona por URL compartilhável, com o sistema já escolhido:
+
+```
+/?system=msdos622&download=https%3A%2F%2Fexemplo.com%2Farquivo.exe
+/?baixar=https%3A%2F%2Fexemplo.com%2Farquivo.exe
+/?system=win101=download'https%3A%2F%2Fexemplo.com%2Farquivo.zip'
+```
+
+No formato compacto `?system=id=download'link'`, o link pode ter `&` e `?` desde que
+esteja entre aspas (simples ou duplas). Um `#` precisa ir codificado (`%23`), porque o
+navegador trata tudo depois dele como fragmento da página. Para evitar qualquer
+ambiguidade, prefira o formato normal com o link codificado por `encodeURIComponent`.
+
+Parâmetros opcionais:
+
+| Parâmetro | Efeito |
+| --- | --- |
+| `unidade=A`, `unidade=B` ou `unidade=C` | força o disco de destino. Sem ele, a interface usa o disco gravável do sistema que está rodando: `C:` no MS-DOS/Windows 3.11, `A:` no Windows 1.01/MenuetOS, `B:` no KolibriOS (ou `A:` no perfil direto). |
+| `nome=ARQUIVO.EXE` | força o nome. Sem ele, usa o `Content-Disposition` da resposta e, por último, o nome da URL final. |
+
+O arquivo é gravado **no diretório atual** do gerenciador (pela URL, na raiz da
+unidade). Nomes que não cabem em 8.3 são ajustados (`relatorio.final.docx` →
+`RELATORI.DOC`); se já existir um arquivo com o mesmo nome, ele ganha um sufixo
+(`PAYLOAD1.EXE`) em vez de sobrescrever. Nomes de dispositivo do DOS (`CON`, `COM1`,
+`LPT1`, …) ganham um `_` na frente.
+
+#### ZIPs
+
+Se o link (ou o `Content-Disposition`) for um `.zip`, a interface **extrai o ZIP no
+próprio emulador** e grava os arquivos/pastas no diretório atual; o `.zip` original
+**não fica no disco**. Assim o sistema convidado não precisa ter um descompactador
+(o MS-DOS 6.22 e o Windows 3.11 só têm o `EXPAND.EXE`, que é do formato LZ da
+Microsoft, não de ZIP).
+
+- **Formatos**: `store` (sem compressão) e `deflate`; ZIP64 básico; nomes UTF-8
+  (bit 11) ou CP437; pastas explícitas e implícitas.
+- **Nomes**: cada componente vira 8.3 (`relatorio.final.docx` → `RELATORI.DOC`),
+  colisões ganham sufixo (`ARQ1.TXT`) e nomes reservados ganham `_`.
+- **Segurança**: caminhos absolutos e com `..` são recusados; o CRC32 de cada
+  arquivo é conferido; no máximo **4096 entradas** e **16 níveis** de pasta.
+- **Espaço**: a extração é feita primeiro na memória e só grava depois de conferir
+  o espaço e a capacidade das pastas. Se algo falhar no meio, os arquivos já
+  gravados são apagados (rollback).
+- **Fallback**: se o ZIP estiver **criptografado** (senha/AES), usar um método que
+  não seja `store`/`deflate` (bzip2, LZMA, …), estiver corrompido ou não couber no
+  disco, ele é gravado inteiro como `NOME.ZIP` e um aviso explica o motivo. O ZIP
+  só é apagado quando a extração termina bem.
+
+O limite de **64 MB** do proxy vale para o ZIP compactado; o conteúdo extraído é
+limitado pelo espaço livre do disco (e pelo teto de segurança de 256 MB do
+extrator).
+
+No perfil padrão (GRUB), o download por URL acontece assim que as imagens carregam,
+**antes** de você escolher a entrada no menu — ele usa o `C:` do perfil. Para mandar
+o arquivo para o `A:`/`B:` por URL, informe `unidade=A`/`unidade=B` ou use o perfil
+direto (`?system=win101`, `?system=kolibri`, …).
+
+O download mexe na **imagem viva em memória** do perfil (no GRUB, o `hdb`/`c.img`; no
+perfil direto do MS-DOS, o `msdos.img`; no Windows 3.11, o `win311hd.img`). Ele **não
+altera o `.img` do projeto**: para guardar, use **salvar o disco no projeto** depois
+que a máquina reiniciar. O `ui/transferencia.mjs` pausa a CPU antes de gravar, remonta
+o FAT (o sistema pode ter escrito enquanto o download corria) e o `ui/app.mjs` chama
+`em.restart()` no fim.
+
+> O proxy `GET /emulator/__download?url=...&max=...` aceita só `http://` e `https://`,
+> recusa links com usuário/senha, limita o arquivo a **64 MB** e a busca a **60 s**. O
+> servidor escuta em `0.0.0.0` e o proxy **não tem autenticação** — não exponha essa
+> porta na internet.
 
 ## O disco C:
 
@@ -285,9 +368,9 @@ linha de cima. Se o menu abrir, o `INT 33h` está no ar.
   direto o `win311-boot.img` carrega os drivers do `C:` e chama `WIN /3`;
 - **Windows 1.01**: boota do disquete extraído da ISO (direto ou pelo GRUB), entra no MS-DOS
   Executive em 640×350 e mostra o `A:` com os programas (Write, Paint, Clock, Cardfile, …);
-- **gerenciador de arquivos no `C:` e no `A:`**: lista, baixa, envia, cria pasta e apaga nos dois
-  discos; quando o Windows 1.01 sobe, ele troca sozinho do `C:` para o `A:`, e no Windows 3.11
-  fica no `C:` (`Systems/MS-DOS 6.22/c.img`);
+- **gerenciador de arquivos no `C:` e no `A:`**: lista, baixa, envia, **baixa por link**,
+  cria pasta e apaga nos dois discos; quando o Windows 1.01 sobe, ele troca sozinho do `C:`
+  para o `A:`, e no Windows 3.11 fica no `C:` (a imagem do perfil);
 - **o mouse dentro de programas DOS**: o `EDIT` abre menu por clique e o ponteiro anda nos dois
   eixos (o driver é o `MOUSE.COM` 8.20 que veio na própria ISO);
 - **programas que travavam no emulador próprio**: QBASIC (x87), SCANDISK (x87), EDIT, FDISK;
@@ -346,7 +429,7 @@ redos.logs.lista()        // as linhas do log
 redos.abrirPainel("arquivos")
 redos.disco.montar()      // o FAT do C: montado agora
 redos.disco.montar().gravar(0, "OI.TXT", new TextEncoder().encode("oi"))
-redos.disco.salvar()      // grava Systems/MS-DOS 6.22/c.img (POST /emulator/__save)
+redos.disco.salvar()      // grava a imagem do perfil (POST /emulator/__save)
 ```
 
 ## Licenças e etiqueta

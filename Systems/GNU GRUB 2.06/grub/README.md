@@ -11,12 +11,19 @@ anexado como `hda`, com o menu desenhado pelo próprio GRUB em modo texto VGA.
 | `boot.img` | setor de boot do GRUB para BIOS (512 bytes, do pacote oficial) |
 | `core.img` | núcleo do GRUB com os módulos e o menu `grub.cfg` embutidos (memdisk) |
 | `grub.cfg` | fonte do menu (fica embutido no `core.img`; editar aqui exige regerar o core) |
+| `core.img.meta.json` | hashes de `grub.cfg`, `boot.img` e `core.img` gravados por `mk-grub.mjs` (gerado automaticamente) |
 | `COPYING` | licença GNU GPL v3 |
 
 O `Systems/GNU GRUB 2.06/grub-hd.img` (8 MB) é gerado por `npm run grub`
 (`emulator/tools/mk-grub.mjs`), que grava `boot.img` no setor 0, `core.img` a partir
 do setor 1 e preenche a blocklist do `diskboot`. O `grub-bios-setup.exe` oficial
 exige elevação no Windows, por isso a montagem é feita em Node.
+
+O `core.img` embute o `grub.cfg`. Quando o pacote do GRUB não está no `TEMP`, o
+script só reutiliza um `core.img` existente se os hashes registrados em
+`core.img.meta.json` baterem com os arquivos atuais; caso contrário, aborta sem
+alterar o `grub-hd.img`. Use `--reutilizar-core` apenas para aceitar um core
+desatualizado de propósito.
 
 ## Como o core foi gerado
 

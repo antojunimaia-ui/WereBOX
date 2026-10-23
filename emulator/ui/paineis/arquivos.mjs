@@ -1,28 +1,14 @@
 // paineis/arquivos.mjs — "Machine > Gerenciador de arquivos": os arquivos da
 // propria maquina (C: no disco rígido, A: no disquete), lidos/gravados no FAT.
-import { el, fmtBytes, fmtDataHora, baixar, escolherArquivo } from "../util.mjs";
+import { el, fmtBytes, fmtDataHora, baixar, escolherArquivo, pausa } from "../util.mjs";
 import { log } from "../logs.mjs";
 import { montarFS, salvarNoProjeto, baixarImagem } from "../discos.mjs";
 import { arquivoDaUnidade } from "../midias.mjs";
 import { dataDOS } from "../fat.mjs";
+import { nome83Seguro } from "../nomes.mjs";
+import { baixarLinkParaDisco, pausarMaquina } from "../transferencia.mjs";
 
 export const meta = { titulo: "Gerenciador de arquivos" };
-
-/** nome de arquivo que caiba em 8.3, sem colidir com o que já existe */
-function nome83Seguro(original, existentes) {
-  const limpo = String(original).trim().toUpperCase().replace(/[^A-Z0-9._$-]/g, "_");
-  const ponto = limpo.lastIndexOf(".");
-  const baseOriginal = (ponto > 0 ? limpo.slice(0, ponto) : limpo).slice(0, 8) || "ARQUIVO";
-  const ext = (ponto > 0 ? limpo.slice(ponto + 1) : "").replace(/[^A-Z0-9]/g, "").slice(0, 3);
-  const juntar = (b) => (ext ? `${b}.${ext}` : b);
-  if (!existentes.has(juntar(baseOriginal))) return { nome: juntar(baseOriginal), mudou: juntar(baseOriginal) !== limpo };
-  for (let i = 1; i < 100; i++) {
-    const s = String(i);
-    const cand = juntar(baseOriginal.slice(0, 8 - s.length) + s);
-    if (!existentes.has(cand)) return { nome: cand, mudou: true };
-  }
-  throw new Error("não achei um nome livre");
-}
 
 const atributos = (e) => [e.diretorio && "D", e.somenteLeitura && "R", e.oculto && "H", e.sistema && "S"].filter(Boolean).join("") || "A";
 
@@ -63,7 +49,7 @@ export function montar(corpo, ctx) {
   corpo.append(el("p", { class: "alerta" },
     "O que você mexer aqui é gravado direto na imagem do disco, em memória. ",
     "O DOS/Windows em execução guarda setores em cache e pode escrever por cima: ",
-    "pause a máquina antes de editar e reinicie depois, para ela reler o disco."));
+    "pause a máquina antes de editar e reinicie depois. O download por link já pausa e reinicia sozinho."));
 
   const seletor = el("div", { class: "acoes" }, el("span", { class: "dica" }, "disco: "));
   const bC = temC ? el("button", {}, "C:") : null;
@@ -82,7 +68,25 @@ export function montar(corpo, ctx) {
   const bBaixar = el("button", {}, "⬇ baixar o disco");
   const bReiniciar = el("button", {}, "⟳ reiniciar a máquina");
   acoes.append(bEnviar, bPasta, bAtualizar, bSalvar, bBaixar, bReiniciar);
-  corpo.append(seletor, acoes, el("p", { class: "dica" },
+
+  const campoLink = el("input", {
+    type: "url",
+    class: "entrada",
+    placeholder: "https://.../arquivo.exe",
+    spellcheck: "false",
+    autocomplete: "off",
+    "aria-label": "link direto para baixar um arquivo",
+  });
+  const bLink = el("button", { class: "principal" }, "⬇ baixar link");
+  const linhaLink = el("div", { class: "acoes" }, campoLink, bLink);
+  campoLink.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); bLink.click(); }
+  });
+
+  corpo.append(seletor, acoes, linhaLink, el("p", { class: "dica" },
+    "Cole o link direto do arquivo (o que já dispara o download, não a página de anúncio). ",
+    "Ele é gravado no diretório atual e a máquina reinicia para o sistema reler o disco."),
+  el("p", { class: "dica" },
     "O CD (R:) é só leitura e é montado pelo MSCDEX — para vê-lo, use `dir r:` no próprio DOS."),
   notaUnidade, recado, caminhoEl, listaEl);
 
@@ -235,7 +239,7 @@ export function montar(corpo, ctx) {
     if (!arquivos.length) return;
     try {
       remontar();
-      const existentes = new Set(fs.listar(atual().cluster).filter((e) => !e.diretorio).map((e) => e.nomeCompleto));
+      const existentes = new Set(fs.listar(atual().cluster).filter((e) => !e.atual && !e.pai).map((e) => e.nomeCompleto));
       const relatos = [];
       for (const f of arquivos) {
         const { nome, mudou } = nome83Seguro(f.name, existentes);
@@ -250,6 +254,56 @@ export function montar(corpo, ctx) {
       pintar();
     } catch (e) {
       ctx.aviso(`não consegui gravar: ${e.message}`);
+    }
+  });
+
+  bLink.addEventListener("click", async () => {
+    const url = campoLink.value.trim();
+    if (!url) { campoLink.focus(); return; }
+    bLink.disabled = true;
+    campoLink.disabled = true;
+    let pausou = false;
+    try {
+      recado.textContent = `baixando ${url}…`;
+      ctx.status(`baixando ${url}…`);
+      const r = await baixarLinkParaDisco(em, {
+        url,
+        unidade,
+        cluster: atual().cluster,
+        antesDeGravar: async () => { pausou = await pausarMaquina(em); },
+      });
+      let mensagem;
+      if (r.zip && r.extraido) {
+        log(`ZIP ${r.nomeOriginal} extraído no ${unidade}: (${r.arquivos} arquivo(s), ${r.pastas} pasta(s), ${fmtBytes(r.bytes)})`, "ok");
+        mensagem = `ZIP extraído no ${unidade}: — ${r.arquivos} arquivo(s), ${r.pastas} pasta(s), ${fmtBytes(r.bytes)} — reiniciando a máquina…`;
+        ctx.status(`ZIP extraído (${r.arquivos} arquivo(s)); reiniciando`, "ok");
+      } else if (r.zip && !r.extraido) {
+        const nota = r.renomeado ? ` — de "${r.nomeOriginal}"` : "";
+        log(`ZIP ${r.nomeOriginal} não extraído (${r.zipFalhou}); gravado como ${r.nome} (${r.bytes} bytes)${nota}`, "err");
+        mensagem = `ZIP não extraído (${r.zipFalhou}); gravado como ${r.nome} (${fmtBytes(r.bytes)})${nota} — reiniciando a máquina…`;
+        ctx.status("ZIP gravado sem extrair; reiniciando", "ok");
+        ctx.aviso(`ZIP não extraído: ${r.zipFalhou}. O arquivo foi gravado como ${r.nome}.`);
+      } else {
+        const nota = r.renomeado ? ` — de "${r.nomeOriginal}"` : "";
+        log(`${r.nome} baixado de ${url} para ${unidade}: (${r.bytes} bytes)${nota}`, "ok");
+        mensagem = `${r.nome} gravado no ${unidade}: (${fmtBytes(r.bytes)})${nota} — reiniciando a máquina…`;
+        ctx.status(`${r.nome} baixado; reiniciando`, "ok");
+      }
+      campoLink.value = "";
+      remontar();
+      pintar();
+      recado.textContent = mensagem;
+      await pausa(700);
+      ctx.reiniciar();
+      // reiniciar nao religa sozinho uma maquina que estava pausada
+      em?.run();
+    } catch (e) {
+      if (pausou) em?.run();
+      recado.textContent = "";
+      ctx.aviso(`não consegui baixar: ${e.message}`);
+    } finally {
+      bLink.disabled = false;
+      campoLink.disabled = false;
     }
   });
 

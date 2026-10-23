@@ -1,227 +1,261 @@
-// boot-selector.mjs — tela de seleção estilo GNU GRUB
-import { el, $ } from "./util.mjs";
+// boot-selector.mjs — launcher HTML para escolher o sistema (fallback do GRUB real).
+//
+// É a tela de `?menu=html` e do item "Escolher sistema". De propósito, não imita
+// o GRUB: usa a mesma linguagem visual do resto da interface (lista, tipografia do
+// app, destaque em âmbar). O boot "de verdade" continua sendo o GRUB 2.06 na tela
+// do PC; isto aqui é só uma alternativa navegável quando o disco do GRUB não existe.
+import { el } from "./util.mjs";
+
+const CATEGORIAS = {
+  boot: "Bootloader",
+  dos: "DOS",
+  windows: "Windows",
+  os: "Sistema",
+  linux: "Linux",
+};
+
+const SEGUNDOS = 10;
+
+const lerPreferencia = () => {
+  try { return localStorage.getItem("redos-selected-os"); } catch { return null; }
+};
+const salvarPreferencia = (id) => {
+  try { localStorage.setItem("redos-selected-os", id); } catch { /* modo privado */ }
+};
 
 export class BootSelector {
   constructor(profiles, onSelect) {
     this.profiles = profiles;
     this.onSelect = onSelect;
     this.selectedIndex = 0;
-    this.countdown = 5;
+    this.segundos = SEGUNDOS;
+    this.restante = SEGUNDOS;
     this.timer = null;
-    
-    // Sistema padrão: o último escolhido (se ainda existir no profiles.json),
-    // senão o "default" do arquivo.
-    const salvo = localStorage.getItem("redos-selected-os");
-    const padrao = profiles.systems.some((s) => s.id === salvo) ? salvo : profiles.default;
-    const defaultIdx = profiles.systems.findIndex(s => s.id === padrao);
-    if (defaultIdx >= 0) this.selectedIndex = defaultIdx;
+    this.iniciado = false;
+    this.container = null;
+
+    // Começa no último sistema escolhido (se ainda existir). Sem preferência,
+    // evita cair no próprio GRUB: o default do app é o GRUB real, mas aqui a
+    // ideia é escolher um sistema direto (o GRUB continua na lista).
+    const salvo = lerPreferencia();
+    const salvoValido = profiles.systems.some((s) => s.id === salvo);
+    const primeiroDireto = profiles.systems.find((s) => s.bootloader !== "grub");
+    const padrao = salvoValido
+      ? salvo
+      : profiles.default === "grub" && primeiroDireto
+        ? primeiroDireto.id
+        : profiles.default;
+    const padraoIdx = profiles.systems.findIndex((s) => s.id === padrao);
+    if (padraoIdx >= 0) this.selectedIndex = padraoIdx;
   }
 
   render() {
-    const container = el("div", { id: "boot-selector", class: "grub-screen" },
-      // Header GRUB-style
-      el("div", { class: "grub-header" },
-        el("div", { class: "grub-title" }, "GNU GRUB  version 2.06"),
-        el("div", { class: "grub-line" })
-      ),
+    const container = el("div", {
+      id: "boot-selector",
+      class: "boot-launcher",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Escolher sistema",
+    },
+      el("div", { class: "boot-painel" },
+        el("header", { class: "boot-topo" },
+          el("div", { class: "boot-titulo" },
+            el("span", { class: "boot-logo", "aria-hidden": "true" }, "▮"),
+            el("div", {},
+              el("strong", {}, "Escolher sistema"),
+              el("span", { class: "boot-sub" }, "WereBOX · máquinas virtuais retrô"))),
+          el("div", { class: "boot-contagem" },
+            el("span", { id: "boot-contagem-texto", class: "boot-contagem-texto" }, ""),
+            el("div", { class: "boot-progresso", "aria-hidden": "true" },
+              el("div", { id: "boot-progresso-barra", class: "boot-progresso-barra" })))),
 
-      // Menu de sistemas
-      el("div", { class: "grub-menu", id: "grub-menu" },
-        ...this.profiles.systems.map((sys, idx) => this.criarItem(sys, idx))
-      ),
+        el("div", { class: "boot-lista", role: "listbox", "aria-label": "Sistemas disponíveis" },
+          ...this.profiles.systems.map((s, i) => this.criarCartao(s, i))),
 
-      // Footer com instruções
-      el("div", { class: "grub-footer" },
-        el("div", { class: "grub-hint" }, 
-          "Use as teclas ↑ e ↓ para selecionar qual entrada é destacada."
-        ),
-        el("div", { class: "grub-hint" }, 
-          "Pressione Enter para iniciar o sistema selecionado, 'e' para editar os"
-        ),
-        el("div", { class: "grub-hint" }, 
-          "comandos antes de iniciar ou 'c' para uma linha de comando."
-        ),
-        el("div", { class: "grub-countdown", id: "grub-countdown" },
-          `   O sistema destacado será iniciado automaticamente em ${this.countdown} segundos.   `
-        )
-      )
+        el("footer", { class: "boot-rodape" },
+          el("div", { class: "boot-dicas" },
+            el("kbd", {}, "↑"), el("kbd", {}, "↓"), el("span", {}, "navegar"),
+            el("span", { class: "boot-ponto" }, "·"),
+            el("kbd", {}, "Enter"), el("span", {}, "iniciar"),
+            el("span", { class: "boot-ponto" }, "·"),
+            el("kbd", {}, "1–9"), el("span", {}, "atalho")),
+          el("button", { id: "boot-iniciar", class: "boot-iniciar", type: "button" }, "Iniciar"))),
     );
 
     this.container = container;
     this.attachEvents(container);
-
+    this.selecionar(this.selectedIndex);
     return container;
   }
 
-  criarItem(system, index) {
-    const isSelected = index === this.selectedIndex;
-    
-    return el("div", {
-      class: `grub-item ${isSelected ? 'grub-item-selected' : ''}`,
-      "data-index": index
+  criarCartao(system, index) {
+    const categoria = CATEGORIAS[system.category] || system.category || "sistema";
+    const cartao = el("button", {
+      type: "button",
+      class: "boot-cartao",
+      role: "option",
+      "aria-selected": "false",
+      "data-index": String(index),
     },
-      el("span", { class: "grub-item-marker" }, isSelected ? "*" : " "),
-      el("span", { class: "grub-item-text" }, 
-        `${system.name} (${system.year})`
-      )
-    );
+      el("span", { class: "boot-icone", "aria-hidden": "true" }, system.icon || "💻"),
+      el("span", { class: "boot-info" },
+        el("span", { class: "boot-linha" },
+          el("strong", { class: "boot-nome" }, system.name),
+          system.year ? el("span", { class: "boot-ano" }, system.year) : null),
+        system.description ? el("span", { class: "boot-desc" }, system.description) : null),
+      el("span", { class: "boot-meta" },
+        el("span", {}, categoria),
+        system.memory ? el("span", { class: "boot-sep" }, "·") : null,
+        system.memory ? el("span", {}, `${system.memory} MB`) : null),
+      el("span", { class: "boot-seta", "aria-hidden": "true" }, "↵"));
+
+    cartao.addEventListener("click", () => {
+      this.pararContagem();
+      this.selecionar(index);
+    });
+    cartao.addEventListener("dblclick", () => {
+      this.selecionar(index);
+      this.start();
+    });
+    return cartao;
   }
 
   attachEvents(container) {
-    // Navegação por teclado. O handler fica guardado para ser removido quando o
-    // sistema for iniciado — senão Enter/↑/↓ continuariam mexendo na máquina
-    // depois do boot (e um Enter reabriria/rebootaria tudo por baixo).
     this.onKeyDown = (e) => {
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        this.move(-1);
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        this.move(1);
+      const total = this.profiles.systems.length;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault(); this.mover(1);
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault(); this.mover(-1);
+      } else if (e.key === "Home") {
+        e.preventDefault(); this.pararContagem(); this.selecionar(0);
+      } else if (e.key === "End") {
+        e.preventDefault(); this.pararContagem(); this.selecionar(total - 1);
       } else if (e.key === "Enter") {
-        e.preventDefault();
-        this.start();
-      } else if (e.key === "c" || e.key === "C") {
-        e.preventDefault();
-        this.showCommandLine();
-      } else if (e.key === "e" || e.key === "E") {
-        e.preventDefault();
-        this.showEdit();
+        e.preventDefault(); this.start();
+      } else if (/^[1-9]$/.test(e.key)) {
+        const i = Number(e.key) - 1;
+        if (i < total) { this.pararContagem(); this.selecionar(i); }
       } else {
-        // Qualquer outra tecla cancela o countdown
-        this.stopCountdown();
+        // qualquer outra tecla cancela a contagem (o usuário assumiu o controle)
+        this.pararContagem();
       }
     };
     document.addEventListener("keydown", this.onKeyDown);
 
-    // Clique nos itens
-    container.querySelectorAll(".grub-item").forEach(item => {
-      item.addEventListener("click", () => {
-        this.stopCountdown();
-        this.selectedIndex = parseInt(item.dataset.index);
-        this.updateSelection(container);
-      });
-      
-      item.addEventListener("dblclick", () => {
-        this.selectedIndex = parseInt(item.dataset.index);
-        this.start();
-      });
+    container.querySelector("#boot-iniciar")?.addEventListener("click", () => {
+      this.pararContagem();
+      this.start();
     });
   }
 
-  move(delta) {
-    this.stopCountdown();
-    this.selectedIndex = (this.selectedIndex + delta + this.profiles.systems.length) % this.profiles.systems.length;
-    this.updateSelection($("#boot-selector"));
+  mover(delta) {
+    this.pararContagem();
+    const total = this.profiles.systems.length;
+    this.selecionar((this.selectedIndex + delta + total) % total);
   }
 
-  updateSelection(container) {
-    container.querySelectorAll(".grub-item").forEach((item, idx) => {
-      const marker = item.querySelector(".grub-item-marker");
-      if (idx === this.selectedIndex) {
-        item.classList.add("grub-item-selected");
-        marker.textContent = "*";
-      } else {
-        item.classList.remove("grub-item-selected");
-        marker.textContent = " ";
-      }
+  selecionar(index) {
+    const total = this.profiles.systems.length;
+    if (!total) return;
+    this.selectedIndex = ((index % total) + total) % total;
+
+    const cartoes = this.container?.querySelectorAll(".boot-cartao") || [];
+    cartoes.forEach((cartao, i) => {
+      const ativo = i === this.selectedIndex;
+      cartao.classList.toggle("selecionado", ativo);
+      cartao.setAttribute("aria-selected", String(ativo));
     });
+    cartoes[this.selectedIndex]?.scrollIntoView({ block: "nearest" });
+
+    const system = this.profiles.systems[this.selectedIndex];
+    const botao = this.container?.querySelector("#boot-iniciar");
+    if (botao) botao.setAttribute("aria-label", `Iniciar ${system.name}`);
   }
 
   startCountdown() {
     if (this.timer || this.iniciado) return;
+    this.restante = this.segundos;
+    this.atualizarContagem();
     this.timer = setInterval(() => {
-      this.countdown--;
-      const countdownEl = $("#grub-countdown");
-      if (countdownEl) {
-        countdownEl.textContent = `   O sistema destacado será iniciado automaticamente em ${this.countdown} segundo${this.countdown !== 1 ? 's' : ''}.   `;
-      }
-
-      if (this.countdown <= 0) {
-        this.start();
-      }
+      this.restante--;
+      this.atualizarContagem();
+      if (this.restante <= 0) this.start();
     }, 1000);
   }
 
-  stopCountdown() {
+  atualizarContagem() {
+    const text = this.container?.querySelector("#boot-contagem-texto");
+    const barra = this.container?.querySelector("#boot-progresso-barra");
+    if (text) text.textContent = this.restante > 0 ? `inicia em ${this.restante}s` : "iniciando…";
+    if (barra) barra.style.width = `${Math.max(0, Math.min(100, ((this.segundos - this.restante) / this.segundos) * 100))}%`;
+  }
+
+  pararContagem() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      const countdownEl = $("#grub-countdown");
-      if (countdownEl) {
-        countdownEl.textContent = "";
-      }
     }
-  }
-
-  showCommandLine() {
-    alert("GRUB command line: Não implementado. Use Enter para iniciar.");
-  }
-
-  showEdit() {
-    const system = this.profiles.systems[this.selectedIndex];
-    alert(`Editar entrada: ${system.name}\n\nConfiguração:\n${JSON.stringify(system.config, null, 2)}`);
+    const text = this.container?.querySelector("#boot-contagem-texto");
+    const barra = this.container?.querySelector("#boot-progresso-barra");
+    if (text) text.textContent = "aguardando escolha";
+    if (barra) barra.style.width = "0%";
   }
 
   start() {
-    if (this.iniciado) return;
+    const system = this.profiles.systems[this.selectedIndex];
+    if (this.iniciado || !system) return;
     this.iniciado = true;
-    this.stopCountdown();
+    this.pararContagem();
     document.removeEventListener("keydown", this.onKeyDown);
 
-    const system = this.profiles.systems[this.selectedIndex];
+    salvarPreferencia(system.id);
 
-    // Salvar preferência
-    localStorage.setItem('redos-selected-os', system.id);
-
-    // Animação de "booting"
-    const container = this.container || $("#boot-selector");
+    const container = this.container;
     if (container) {
-      container.innerHTML = "";
-      container.appendChild(el("div", { class: "grub-booting" },
-        el("div", {}, `Booting '${system.name}'...`),
-        el("div", { class: "grub-loading" })
-      ));
+      container.textContent = "";
+      container.append(
+        el("div", { class: "boot-iniciando" },
+          el("div", { class: "boot-iniciando-marca" }, el("span", {}, "▮"), " WereBOX"),
+          el("div", { class: "boot-iniciando-nome" }, system.name),
+          el("div", { class: "boot-iniciando-barra" }, el("span", {})),
+          el("div", { class: "boot-iniciando-dica" }, "preparando a máquina…")),
+      );
     }
 
     setTimeout(() => {
-      // A tela do GRUB e' uma sobreposicao de tela cheia (z-index 10000). Se ela
-      // nao sair, o PC emulado fica rodando atras dela e a pagina parece travada
-      // em "Booting..." para sempre.
       container?.remove();
       this.onSelect(system);
-    }, 800);
+    }, 900);
   }
 
   static async mostrar(onSelect) {
     try {
-      // Carregar perfis
-      const response = await fetch("profiles.json");
-      if (!response.ok) throw new Error("Não foi possível carregar profiles.json");
-      
-      const profiles = await response.json();
+      const response = await fetch("profiles.json", { cache: "no-store" });
+      if (!response.ok) throw new Error("não consegui carregar profiles.json");
 
-      // Se o disco do GRUB nao existir, nao adianta oferecer a entrada dele no
-      // menu HTML: mostra so' os perfis diretos que ainda funcionam.
-      const perfilGrub = profiles.systems?.find((s) => s.bootloader === "grub");
+      const profiles = await response.json();
+      if (!Array.isArray(profiles.systems) || !profiles.systems.length) {
+        throw new Error("profiles.json não tem nenhum sistema");
+      }
+
+      // Se o disco do GRUB não existir, a entrada dele no menu HTML não serve:
+      // mostra só os perfis diretos que ainda funcionam.
+      const perfilGrub = profiles.systems.find((s) => s.bootloader === "grub");
       const urlGrub = perfilGrub?.config?.hda?.url || "../Systems/GNU%20GRUB%202.06/grub-hd.img";
       const temGrub = await fetch(urlGrub, { method: "HEAD", cache: "no-store" })
         .then((r) => r.ok).catch(() => false);
       if (!temGrub) profiles.systems = profiles.systems.filter((s) => s.bootloader !== "grub");
+      if (!profiles.systems.length) throw new Error("nenhum sistema disponível para o menu HTML");
 
-      // Criar e mostrar seletor
       const selector = new BootSelector(profiles, onSelect);
       const container = selector.render();
-
       document.body.appendChild(container);
-
-      // Iniciar countdown APÓS adicionar ao DOM
       selector.startCountdown();
-
       return selector;
     } catch (e) {
-      console.error("Erro ao carregar boot selector:", e);
-      // Fallback: iniciar com DOS padrão
+      console.error("não consegui montar o seletor de sistemas:", e);
+      // Fallback: boota o MS-DOS direto (o c.img é a imagem que sempre existe).
       onSelect({
         id: "msdos622",
         name: "MS-DOS 6.22",
