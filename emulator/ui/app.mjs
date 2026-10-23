@@ -12,6 +12,7 @@ import * as pArquivos from "./paineis/arquivos.mjs";
 import * as pLogs from "./paineis/logs.mjs";
 import * as pSeguranca from "./paineis/seguranca.mjs";
 import { BootSelector } from "./boot-selector.mjs";
+import { BootLoader } from "./boot-loader.mjs";
 import { instalarGovernador, pararGovernador, lerAlvo, definirAlvo, alvoAtual, ativarGovernador, desativarGovernador } from "./velocidade.mjs";
 
 /* ------------------------------------------------------------------- ajustes */
@@ -100,6 +101,8 @@ function boot() {
   const midias = MIDIAS.filter((k) => AJUSTES[k]).map((k) => `${k}=${AJUSTES[k].url}`).join(", ");
   log(`subindo a máquina: v86 + SeaBIOS + ${midias || "nenhuma mídia"}`);
   ctx.status("carregando o PC…");
+  ajustarTela();
+  BootLoader.mostrar(screenEl, sistemaAtual?.name || "WereBOX");
   const novoEm = new V86({ ...AJUSTES, screen_container: screenEl, screen: { ...AJUSTES.screen } });
   em = novoEm;
   // O limitador é instalado já, mas fica desligado durante o boot: o
@@ -126,6 +129,7 @@ function boot() {
     if (!d.total) return;
     const pct = Math.round((d.loaded / d.total) * 100);
     ctx.status(`baixando ${d.file_name} — ${pct}%`);
+    BootLoader.atualizar({ arquivo: d.file_name, loaded: d.loaded, total: d.total, pct });
     // anota de 25 em 25% (senão o log vira uma parede de linhas)
     const ultimo = progresso.get(d.file_name) ?? -1;
     if (pct === 0 || pct >= ultimo + 25) {
@@ -135,6 +139,7 @@ function boot() {
   });
   novoEm.add_listener("emulator-loaded", () => {
     if (!vivo()) return;
+    BootLoader.concluir();
     // O objeto interno do v86 só existe depois que as imagens são carregadas;
     // é aqui que o limitador de velocidade pode ser instalado de verdade.
     prepararGovernador();
@@ -244,6 +249,7 @@ function boot() {
 
 async function teardown() {
   pararWatchdogGrub();
+  BootLoader.remover();
   const velho = em;
   em = null;
   if (velho) {
@@ -753,6 +759,9 @@ telaArea.addEventListener("click", () => {
 
 /* -------------------------------------------------------------------- start */
 log("WereBOX — interface iniciada (motor v86)");
+
+// restaura preferencia visual salva (sem-crt)
+if (localStorage.getItem("werebox-sem-crt") === "1") app.classList.add("sem-crt");
 
 function iniciarPerfil(selectedSystem) {
   log(`sistema selecionado: ${selectedSystem.name}`, "ok");

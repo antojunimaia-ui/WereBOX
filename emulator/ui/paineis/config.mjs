@@ -64,6 +64,23 @@ export function montar(corpo, ctx) {
   bVel.append(el("p", { class: "dica" },
     "O v86 roda o mais rápido que o host permitir. O limite insere pausas para simular um PC da época e entra quando o sistema termina de subir (o boot fica na velocidade máxima para não atrapalhar os discos); 5 MIPS equivale a um 386DX e 0 desliga o limite."));
 
+  /* ---------------------------------------------------------------- visual */
+  const bVisual = bloco("Visual");
+  const app = document.getElementById("app");
+  const semCrt = localStorage.getItem("werebox-sem-crt") === "1";
+  if (semCrt) app.classList.add("sem-crt");
+  const chkCrt = el("input", { type: "checkbox", id: "chk-crt", style: "cursor:pointer" });
+  chkCrt.checked = !semCrt;
+  chkCrt.addEventListener("change", () => {
+    const desligar = !chkCrt.checked;
+    app.classList.toggle("sem-crt", desligar);
+    localStorage.setItem("werebox-sem-crt", desligar ? "1" : "0");
+    log(`scanlines CRT: ${desligar ? "desligadas" : "ligadas"}`, "info");
+  });
+  const lblCrt = el("label", { for: "chk-crt", style: "cursor:pointer; display:flex; align-items:center; gap:6px" },
+    chkCrt, "Scanlines CRT (efeito de linhas de monitor antigo)");
+  bVisual.append(el("div", { class: "campo" }, el("span", { class: "rotulo" }, "Scanlines"), el("span", { class: "valor" }, lblCrt)));
+
   /* ---------------------------------------------------------------- ajustes */
   const bAjustes = bloco("Ajustes da máquina");
   campo(bAjustes, "Memória RAM", fmtMB(ctx.config.memory_size));

@@ -119,11 +119,41 @@ html, body {
 
 /* scanlines: dá para desligar zerando --scan-forca */
 #screen::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 10;
   background-image: repeating-linear-gradient(180deg,
     rgba(0,0,0,0) 0, rgba(0,0,0,0) var(--scan),
     rgba(0,0,0,var(--scan-forca)) var(--scan), rgba(0,0,0,var(--scan-forca)) calc(var(--scan) * 2));
 }
+
+/* ------------------------------------------------------------- WereBOX Boot Screen */
+#werebox-boot-screen {
+  position: absolute; inset: 0; z-index: 5;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  user-select: none; opacity: 1; transition: opacity 0.35s ease;
+  overflow: hidden;
+}
+#werebox-boot-screen.wb-boot-oculto { opacity: 0; pointer-events: none; }
+
+.wb-ascii-wrap {
+  position: relative; display: inline-block; line-height: 1.12;
+}
+.wb-ascii {
+  margin: 0; padding: 0;
+  font-family: Consolas, "Courier New", monospace !important;
+  font-size: clamp(10px, 1.8vw, 22px) !important;
+  letter-spacing: 0; white-space: pre !important; user-select: none;
+}
+.wb-ascii-fg {
+  position: relative;
+  color: #ffd700;
+  clip-path: inset(0 calc(100% - var(--loader-pct, 0%)) 0 0);
+  transition: clip-path 0.12s linear;
+  pointer-events: none;
+}
+
+/* sem-crt: o usuario desligou as scanlines em Configuracao */
+#app.sem-crt { --scan-forca: 0; }
 
 /* tela cheia: a barra continua visível (ela é a interface) */
 #app:fullscreen { background: #000; }
@@ -272,6 +302,7 @@ button.trilha:hover { text-decoration: underline; }
 .secao-corpo { padding: 16px; }
 
 /* ================================================= Syscall Monitor */
+.syscall-controles {
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
   padding: 8px 0; border-bottom: 1px solid var(--linha-2); margin-bottom: 12px;
 }
