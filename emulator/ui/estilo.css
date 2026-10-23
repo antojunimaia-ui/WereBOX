@@ -143,13 +143,9 @@ html, body {
   font-family: Consolas, "Courier New", monospace !important;
   font-size: clamp(10px, 1.8vw, 22px) !important;
   letter-spacing: 0; white-space: pre !important; user-select: none;
-}
-.wb-ascii-fg {
-  position: relative;
-  color: #ffd700;
-  clip-path: inset(0 calc(100% - var(--loader-pct, 0%)) 0 0);
-  transition: clip-path 0.12s linear;
-  pointer-events: none;
+  background: linear-gradient(to right, #ffd700 var(--loader-pct, 0%), #555555 var(--loader-pct, 0%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* sem-crt: o usuario desligou as scanlines em Configuracao */

@@ -128,8 +128,13 @@ function boot() {
     if (!vivo()) return;
     if (!d.total) return;
     const pct = Math.round((d.loaded / d.total) * 100);
-    ctx.status(`baixando ${d.file_name} — ${pct}%`);
-    BootLoader.atualizar({ arquivo: d.file_name, loaded: d.loaded, total: d.total, pct });
+    BootLoader.atualizar({
+      arquivo: d.file_name,
+      loaded: d.loaded,
+      total: d.total,
+      file_index: d.file_index,
+      file_count: d.file_count,
+    });
     // anota de 25 em 25% (senão o log vira uma parede de linhas)
     const ultimo = progresso.get(d.file_name) ?? -1;
     if (pct === 0 || pct >= ultimo + 25) {

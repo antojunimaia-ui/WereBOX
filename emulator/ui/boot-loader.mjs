@@ -1,4 +1,4 @@
-// boot-loader.mjs — apenas o ASCII do WereBOX grande na tela, enchendo de amarelo
+// boot-loader.mjs — apenas o ASCII do WereBOX grande na tela, mudando de cor para amarelo em tempo real
 const ASCII_ART = [
   "███   ███ ████████ ███████▄  ████████ ██████▄   ▄██████▄  ███▄ ▄███",
   "███   ███ ███      ███   ███ ███      ███  ▐█▌ ███▀  ▀███  ▀█████▀ ",
@@ -10,8 +10,7 @@ const ASCII_ART = [
 class WereboxBootLoader {
   constructor() {
     this.el = null;
-    this.asciiFg = null;
-    this.arquivos = new Map();
+    this.asciiEl = null;
     this.pctAtual = 0;
     this.finalizado = false;
   }
@@ -20,52 +19,45 @@ class WereboxBootLoader {
     this.remover();
     this.finalizado = false;
     this.pctAtual = 0;
-    this.arquivos.clear();
 
     const tela = document.createElement("div");
     tela.id = "werebox-boot-screen";
     tela.innerHTML = `
       <div class="wb-ascii-wrap">
-        <pre class="wb-ascii wb-ascii-fg">${ASCII_ART}</pre>
+        <pre class="wb-ascii">${ASCII_ART}</pre>
       </div>
     `;
 
     container.appendChild(tela);
     this.el = tela;
-    this.asciiFg = tela.querySelector(".wb-ascii-fg");
+    this.asciiEl = tela.querySelector(".wb-ascii");
 
     this.atualizarProgressoVisual(0);
   }
 
-  atualizar({ arquivo = "", loaded = 0, total = 0, pct = null }) {
+  atualizar({ arquivo = "", loaded = 0, total = 0, file_index = 0, file_count = 1 }) {
     if (!this.el || this.finalizado) return;
 
-    if (arquivo && total > 0) {
-      this.arquivos.set(arquivo, { loaded, total });
+    let pct = 0;
+    const totalArquivos = Math.max(1, Number(file_count) || 1);
+    const indiceArquivo = Math.max(0, Number(file_index) || 0);
+
+    if (total > 0) {
+      const progressoAtual = Math.min(1, Math.max(0, loaded / total));
+      pct = Math.round(((indiceArquivo + progressoAtual) / totalArquivos) * 100);
+    } else {
+      pct = Math.round((indiceArquivo / totalArquivos) * 100);
     }
 
-    let pctFinal = pct;
-    let somaLoaded = 0;
-    let somaTotal = 0;
+    pct = Math.max(this.pctAtual, Math.min(100, pct));
+    this.pctAtual = pct;
 
-    for (const [, item] of this.arquivos) {
-      somaLoaded += item.loaded;
-      somaTotal += item.total;
-    }
-
-    if (pctFinal === null) {
-      pctFinal = somaTotal > 0 ? Math.round((somaLoaded / somaTotal) * 100) : 0;
-    }
-
-    pctFinal = Math.max(this.pctAtual, Math.min(100, pctFinal));
-    this.pctAtual = pctFinal;
-
-    this.atualizarProgressoVisual(pctFinal);
+    this.atualizarProgressoVisual(pct);
   }
 
   atualizarProgressoVisual(pct) {
-    if (!this.asciiFg) return;
-    this.asciiFg.style.setProperty("--loader-pct", `${pct}%`);
+    if (!this.asciiEl) return;
+    this.asciiEl.style.setProperty("--loader-pct", `${pct}%`);
   }
 
   concluir() {
@@ -75,7 +67,7 @@ class WereboxBootLoader {
 
     setTimeout(() => {
       this.esconder();
-    }, 350);
+    }, 280);
   }
 
   esconder() {
@@ -83,13 +75,14 @@ class WereboxBootLoader {
     this.el.classList.add("wb-boot-oculto");
     setTimeout(() => {
       this.remover();
-    }, 350);
+    }, 320);
   }
 
   remover() {
     if (this.el) {
       this.el.remove();
       this.el = null;
+      this.asciiEl = null;
     }
   }
 }
