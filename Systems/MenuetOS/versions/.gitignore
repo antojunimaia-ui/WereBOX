@@ -1,0 +1,5 @@
+# Ignore imagens baixadas manualmente
+*.img
+*.IMG
+*.zip
+*.ZIP
