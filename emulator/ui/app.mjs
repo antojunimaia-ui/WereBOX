@@ -29,6 +29,7 @@ const AJUSTES = {
   bios: { url: "seabios.bin" },
   vga_bios: { url: "vgabios.bin" },
   autostart: true,
+  disable_speaker: false, // Sound Blaster 16 enabled (PC Speaker + DAC)
   screen: { use_graphical_text: true, encoding: "cp437", scaling: 1 },
 };
 const INFO = { proporcao: 4 / 3, msPorTecla: 12 };
