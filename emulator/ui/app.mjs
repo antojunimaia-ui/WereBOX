@@ -29,7 +29,6 @@ const AJUSTES = {
   bios: { url: "seabios.bin" },
   vga_bios: { url: "vgabios.bin" },
   autostart: true,
-  disable_speaker: false, // Sound Blaster 16 enabled (PC Speaker + DAC)
   screen: { use_graphical_text: true, encoding: "cp437", scaling: 1 },
 };
 const INFO = { proporcao: 4 / 3, msPorTecla: 12 };
@@ -202,17 +201,6 @@ function boot() {
     // O objeto interno do v86 só existe depois que as imagens são carregadas;
     // é aqui que o limitador de velocidade pode ser instalado de verdade.
     prepararGovernador();
-    
-    // Log do status do áudio
-    if (novoEm.speaker_adapter) {
-      logV86("🔊 Sound Blaster 16 inicializado", "ok");
-      console.log("[WereBOX] Speaker adapter:", novoEm.speaker_adapter);
-      console.log("[WereBOX] Audio context state:", novoEm.speaker_adapter.audio_context?.state);
-    } else {
-      logV86("⚠️ Speaker adapter não foi criado", "err");
-      console.warn("[WereBOX] disable_speaker pode estar true ou navegador não suporta Web Audio");
-    }
-    
     // no v86 o "emulator-loaded" pode chegar depois do "emulator-started"; nao
     // deixe ele sobrescrever o estado do GRUB com "ligando o PC...".
     ctx.status(
@@ -889,16 +877,6 @@ window.addEventListener("keydown", (e) => {
 
 // clicar na tela captura o mouse (pointer lock) para sincronização perfeita
 telaArea.addEventListener("click", async () => {
-  // Resume AudioContext (navegadores bloqueiam áudio até user gesture)
-  if (em?.speaker_adapter?.audio_context?.state === "suspended") {
-    try {
-      await em.speaker_adapter.audio_context.resume();
-      logV86("🔊 AudioContext resumed - som ativado", "ok");
-    } catch (err) {
-      console.warn("[WereBOX] Falha ao ativar áudio:", err);
-    }
-  }
-  
   const canvas = screenEl.querySelector("canvas");
   if (!canvas) return;
   
