@@ -131,6 +131,20 @@
         "fda": { "url": "../Systems/MenuetOS/menuet.img" },
         "boot_order": 801
       }
+    },
+    {
+      "id": "menuet086",
+      "name": "MenuetOS 0.86B",
+      "description": "Versão clássica do MenuetOS 32-bit de 2009 — interface retro com jogos e networking",
+      "icon": "💎",
+      "category": "os",
+      "year": "2009",
+      "memory": 128,
+      "vga_memory": 8,
+      "config": {
+        "fda": { "url": "../Systems/MenuetOS%200.86B/menuet086.img" },
+        "boot_order": 801
+      }
     }
   ],
   "default": "grub"
