@@ -1,8 +1,8 @@
 {
-  "geradoEm": "2026-10-23T21:28:47.976Z",
+  "geradoEm": "2026-10-24T04:48:07.944Z",
   "geradoPor": "emulator/tools/mk-grub.mjs",
   "grubCfgSha256": "e320d5c33f39dda35c855543db631351edd5e17f6315ba3c9b79bea54869af2b",
   "bootImgSha256": "6343b7e9f06388566ea5b6e8a3535fbaec1f695a0b3793caee5386237d4d3450",
-  "coreImgSha256": "90c3d7462e0c4fd4b97c36bd17cc2a8d8edbcd8f7d88bb4c86e93dd05475aee8",
+  "coreImgSha256": "0090ae12f6319a0f9015cce4363934310dd03c5aed77172bddefcb48efcf03c4",
   "modulos": "biosdisk part_msdos fat chain drivemap normal configfile echo test reboot iorw"
 }

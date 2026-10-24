@@ -1,15 +1,20 @@
-# reDOS
+# WereBOX
 
-**MS-DOS 6.22, Windows 3.11 e Windows 1.01 de verdade no navegador.** A interface é nossa (tema
-CRT, cores CGA, tela cheia, barra de ferramentas); o motor é o
-[v86](https://github.com/copy/v86) (x86 → WASM).
+**Sistemas operacionais clássicos e experimentais de verdade no navegador.** MS-DOS 6.22, Windows 
+1.01/2.03/3.11, KolibriOS, MenuetOS, NovaOS e mais. A interface é nossa (tema CRT, cores CGA, 
+tela cheia, barra de ferramentas); o motor é o [v86](https://github.com/copy/v86) (x86 → WASM).
 
 ```
-reDOS/
+WereBOX/
   Systems/              as mídias dos sistemas (ver Systems/README.md)
-    MS-DOS 6.22/        MS-DOS 6.22.iso · dos622.iso · c.img · msdos622.img · novo.img · extracted/
-    Windows 1.01/       Windows 1.01.iso · win101.img
-    Windows 3.11/       disk01.img … disk07.img · win311-boot.img
+    MS-DOS 6.22/        c.img · msdos.img · dos622.iso · novo.img · extracted/
+    Windows 1.01/       win101.img · Windows 1.01.iso
+    Windows 2.03/       win203.img
+    Windows 3.11/       win311hd.img · win311-boot.img · disk01-07.img
+    KolibriOS/          kolibri.img (1.44 MB, 100% Assembly x86)
+    MenuetOS/           menuet.img (1.44 MB, 100% Assembly x86)
+    NovaOS/             NovaOS.iso (kernel Multiboot, VBE 1280×720)
+    TinyCore/           tinycore.iso (Linux ultraleve)
     GNU GRUB 2.06/      grub-hd.img · grub/ (boot.img, core.img, grub.cfg, licença)
   emulator/
     index.html          a interface: barra de ferramentas + tela do PC (motor v86)
@@ -18,16 +23,18 @@ reDOS/
       boot-selector.mjs menu HTML de fallback (o boot padrão é o GRUB real)
       estilo.css        o visual (tema, cores, scanlines — tudo em variáveis)
       fat.mjs           leitor/gravador de FAT12/FAT16 (os arquivos da máquina)
-      discos.mjs        os discos C:/A: vivos do v86 (ler/gravar/baixar/salvar no projeto)
+      discos.mjs        os discos C:/A:/B: vivos do v86 (ler/gravar/baixar/salvar no projeto)
       midias.mjs        onde cada imagem é salva em Systems/
       mouse.mjs         o estado do mouse (o driver assumiu o PS/2?)
       snapshots.mjs     snapshots no IndexedDB do navegador
       logs.mjs          o diário da sessão
+      teclado-mobile.mjs teclado virtual para mobile
+      duo.mjs           modo comparação lado a lado
       paineis/          config · snap-novo · snap-lista · arquivos · logs · seguranca
     tests/              testes em Node (fat.test.mjs — roda sem navegador)
     preparar-disco.html bancada: monta o disco C: usando o próprio DOS
     autoral/            o emulador 8086 + DOS que escrevemos — APOSENTADO (ver autoral/README.md)
-    profiles.json       os sistemas do menu de boot (mídias, RAM, ordem de boot)
+    profiles.json       os 9 sistemas do menu de boot (mídias, RAM, ordem de boot)
     tools/              setup-v86.mjs · mk-grub.mjs · mkdisk.mjs · instalar-mouse.mjs · serve.mjs
     libv86.js v86.wasm  motor v86 (do pacote npm)
     seabios.bin vgabios.bin   BIOS do PC emulado
@@ -56,8 +63,9 @@ abaixo). Sem a ISO o perfil do Windows 1.01 fica sem mídia; o MS-DOS e o Window
 
 Ao abrir, o PC boota direto no **GNU GRUB 2.06** rodando dentro do v86 — não é uma
 tela HTML. **↑/↓** escolhem, **Enter** inicia e o destaque começa sozinho depois de
-12 segundos. O menu tem **MS-DOS 6.22 (C:)**, **Windows 3.11 (C:)** e **Windows 1.01
-(A:)**; o teclado do navegador chega ao GRUB como em qualquer sistema emulado.
+12 segundos. O menu tem **MS-DOS 6.22 (C:)**, **Windows 2.03 (C:)**, **Windows 3.11 (C:)**, 
+**Windows 1.01 (A:)** e **KolibriOS (B:)**; o teclado do navegador chega ao GRUB como em 
+qualquer sistema emulado.
 
 O GRUB fica no `hda` (`Systems/GNU GRUB 2.06/grub-hd.img`); o disco do MS-DOS e do
 Windows 3.11 vai no `hdb` (`Systems/MS-DOS 6.22/c.img`) e o `drivemap` o apresenta
@@ -67,10 +75,15 @@ ao DOS/Windows como disco 0/`C:`; o Windows 1.01 fica no `fda`
 
 | Perfil (`profiles.json`) | Como boota | Mídias |
 | --- | --- | --- |
-| **GNU GRUB 2.06** (padrão) | `hda = grub-hd.img` → menu real | `hdb = c.img`, `fda = win101.img`, `cdrom = dos622.iso`, ordem `0x312` (disco → disquete → CD) |
-| **MS-DOS 6.22** | `C:` direto (MBR → IO.SYS) | `hda = msdos.img` (cópia do `c.img`), `cdrom = dos622.iso`, ordem `0x132` (disco → CD → disquete) |
-| **Windows 3.11** | `A:` de boot → `C:\WINDOWS\WIN /3` | `hda = win311hd.img`, `fda = win311-boot.img`, ordem `0x321` (disquete primeiro) |
-| **Windows 1.01** | `A:` direto (disquete MS-DOS 3.3 → `WIN`) | `fda = win101.img`, ordem `0x321` (disquete primeiro) |
+| **GNU GRUB 2.06** (padrão) | `hda = grub-hd.img` → menu real | `hdb = c.img`, `fda = win101.img`, `fdb = kolibri.img`, ordem `0x312` |
+| **MS-DOS 6.22** | `C:` direto (MBR → IO.SYS) | `hda = msdos.img`, `cdrom = dos622.iso`, ordem `0x132` |
+| **Windows 1.01** | `A:` direto (MS-DOS 3.3 → `WIN`) | `fda = win101.img`, ordem `0x321` |
+| **Windows 2.03** | `C:` direto | `hda = win203.img`, ordem `0x132` |
+| **Windows 3.11** | `A:` de boot → `C:\WINDOWS\WIN /3` | `hda = win311hd.img`, `fda = win311-boot.img`, ordem `0x321` |
+| **NovaOS** | Live CD (GRUB → kernel Multiboot) | `cdrom = NovaOS.iso`, ordem `0x123` |
+| **Tiny Core Linux** | Live CD (ISOLINUX) | `cdrom = tinycore.iso`, ordem `0x123` |
+| **KolibriOS** | Disquete `A:` | `fda = kolibri.img`, ordem `0x321` |
+| **MenuetOS** | Disquete `A:` | `fda = menuet.img`, ordem `0x321` |
 
 Os nomes da tabela são os arquivos dentro de `Systems/`; os caminhos completos estão
 em `Systems/README.md`.
@@ -142,7 +155,7 @@ Na barra: a aba **Machine**, os comandos rápidos (`ver`, `dir`, `mem` — digit
 | **Criar snapshot** | `em.save_state()` (RAM + dispositivos + **o disco**) num nome que você escolhe, com miniatura da tela. Dá uns 22 MB comprimidos e vai para o IndexedDB — sobrevive ao F5. |
 | **Selecionar snapshot** | a lista com miniatura, data, tamanho e o prompt que estava na tela: **restaurar**, baixar (`.v86state`) ou apagar. Também importa arquivo `.v86state`. |
 | **Gerenciador de arquivos** | os arquivos da própria máquina, no `C:` (`c.img` no GRUB, `msdos.img` no perfil direto do MS-DOS, `win311hd.img` no do Windows 3.11) e no `A:` (a imagem anexada como `fda`: `win101.img` no GRUB/Windows 1.01 ou `win311-boot.img` no perfil direto do Windows 3.11): navegar, baixar, **enviar arquivo**, **baixar um arquivo por link**, criar pasta e apagar — mexendo no FAT de verdade. Ele abre sozinho no disco do sistema que está rodando (C: no MS-DOS e no Windows 3.11; A: no Windows 1.01 — no GRUB, conforme a entrada escolhida) e tem botões **C:/A:** para trocar na mão (ver abaixo). |
-| **Mostrar logs** | o diário ao vivo: `reDOS` (o que a interface faz), `v86` (download das imagens, boot, tela), `console` (o console do navegador, com captura opcional) e `erro`. Com filtros por nível, busca, pausa da rolagem, copiar e baixar `.txt`. |
+| **Mostrar logs** | o diário ao vivo: `WereBOX` (o que a interface faz), `v86` (download das imagens, boot, tela), `console` (o console do navegador, com captura opcional) e `erro`. Com filtros por nível, busca, pausa da rolagem, copiar e baixar `.txt`. |
 
 ### Velocidade da CPU
 
@@ -194,7 +207,8 @@ npm run test:fat       # 57 conferências contra Systems/MS-DOS 6.22/c.img, sem 
 npm run test:zip       # 67: extração de ZIP store/deflate/ZIP64, nomes 8.3, limites e rollback
 npm run test:download  # 71: nomes 8.3, parsing do link, gravação no C:/A: e extração de ZIP
 npm run test:midias    # 12: qual .img cada perfil salva (c.img, msdos.img, win203.img…)
-npm run test:serve     # 16: o proxy /emulator/__download contra um servidor de verdade
+npm run test:duo       # 17: parsing e validação do ?duo=id1,id2
+npm run test:serve     # 21: o proxy /emulator/__download e a rota do duo contra um servidor de verdade
 npm run test:tudo      # tudo acima + os 31 testes do emulador aposentado
 ```
 
@@ -275,6 +289,61 @@ o FAT (o sistema pode ter escrito enquanto o download corria) e o `ui/app.mjs` c
 > recusa links com usuário/senha, limita o arquivo a **64 MB** e a busca a **60 s**. O
 > servidor escuta em `0.0.0.0` e o proxy **não tem autenticação** — não exponha essa
 > porta na internet.
+
+### Dois PCs lado a lado (`?duo=`)
+
+Para comparar dois sistemas, abra exatamente dois ids de `profiles.json` separados por
+vírgula:
+
+```
+/?duo=win101,win203
+/?duo=msdos622,win311
+/?duo=grub,win101
+```
+
+Cada lado é uma máquina **independente**: o `C:`/`A:`, o estado da CPU, os downloads e os
+snapshots de um não interferem no outro. Cada iframe mostra sua **própria interface completa** 
+com barra de ferramentas, controles e painéis. O mesmo sistema pode aparecer dos dois lados 
+(`?duo=win101,win101`).
+
+### Teclado Virtual Mobile
+
+O WereBOX inclui um **teclado virtual otimizado para dispositivos móveis** (smartphones e tablets).
+
+**Como abrir:**
+- **No mobile**: um botão flutuante (⌨️) aparece automaticamente no canto inferior direito
+- **No desktop**: pressione `Ctrl+K` (Windows/Linux) ou `Cmd+K` (Mac)
+- **Fechar**: clique no `✕`, pressione `ESC` ou `Ctrl+K` novamente
+
+**Layouts disponíveis:**
+- **ABC** - Layout alfabético padrão com letras, números e teclas especiais (ESC, TAB, ENTER, setas)
+- **123** - Layout numérico com símbolos (!@#$%^&*), parênteses, chaves e operadores
+- **F-Keys** - Teclas de função (F1-F12), INS, DEL, HOME, END, PGUP, PGDN
+
+**Modificadores:**
+- **CTRL/ALT** - Mantém pressionado até clicar novamente (toggle)
+- **SHIFT** - Auto-desliga após digitar uma letra
+- **CAPS** - Caps Lock (visual)
+
+**Atalhos rápidos do DOS:**
+Botões na barra superior para comandos comuns: `dir`, `cd..`, `cls`, `ver`, `mem`, `exit`
+
+**Características:**
+- Feedback haptic (vibração ao tocar, se o dispositivo suportar)
+- Cores temáticas (modificadores em âmbar, especiais em verde, navegação em azul)
+- Envio correto de sequências ANSI para setas e F-keys
+- Layout responsivo (ajusta para paisagem/retrato)
+
+**Nota**: O teclado virtual envia teclas com o mesmo timing do v86 (12ms entre caracteres para
+comandos), garantindo compatibilidade total com programas DOS e Windows.
+
+## O disco C:
+monta o layout é o próprio `app.mjs` (via `ui/duo.mjs`) na mesma `index.html`, sem página
+separada e sem redirecionamento.
+
+> São **duas instâncias do v86** no mesmo navegador: espere cerca do dobro de memória e
+> CPU. Para controlar um lado, clique dentro dele. Para abrir um lado sozinho, use
+> `?system=<id>`; para voltar ao menu, `?menu=html`.
 
 ## O disco C:
 
@@ -360,27 +429,30 @@ linha de cima. Se o menu abrir, o `INT 33h` está no ar.
 
 ## O que já roda (testado)
 
-- **GNU GRUB 2.06 de verdade**: menu ↑/↓/Enter desenhado pelo GRUB dentro do v86; as entradas
-  MS-DOS 6.22, Windows 3.11 (as duas no mesmo `C:` via flag no CMOS) e Windows 1.01 bootam pelo
-  `chainloader` (com `drivemap` e `set root` corretos);
-- **Windows 3.11**: instalado a partir dos sete disquetes originais, roda em 640×480 sobre o
-  MS-DOS 6.22 no mesmo `C:`; no GRUB, a entrada própria liga a flag do `BOOTWIN.COM`, e no perfil
-  direto o `win311-boot.img` carrega os drivers do `C:` e chama `WIN /3`;
-- **Windows 1.01**: boota do disquete extraído da ISO (direto ou pelo GRUB), entra no MS-DOS
-  Executive em 640×350 e mostra o `A:` com os programas (Write, Paint, Clock, Cardfile, …);
-- **gerenciador de arquivos no `C:` e no `A:`**: lista, baixa, envia, **baixa por link**,
-  cria pasta e apaga nos dois discos; quando o Windows 1.01 sobe, ele troca sozinho do `C:`
-  para o `A:`, e no Windows 3.11 fica no `C:` (a imagem do perfil);
-- **o mouse dentro de programas DOS**: o `EDIT` abre menu por clique e o ponteiro anda nos dois
-  eixos (o driver é o `MOUSE.COM` 8.20 que veio na própria ISO);
-- **programas que travavam no emulador próprio**: QBASIC (x87), SCANDISK (x87), EDIT, FDISK;
-- `format`, `find`, `undelete`, `chkdsk`, `mem`, `tree`, `attrib`, `xcopy`, `deltree`, `setver`;
-- driver **Oak CD-ROM** (`cd1.SYS`) + `MSCDEX 2.23` com o CD em `R:`;
-- tela 80×25 com a fonte VGA real e cores CGA; tela cheia; 32 MB de RAM.
+**Sistemas operacionais:**
+- **GNU GRUB 2.06 de verdade**: menu ↑/↓/Enter desenhado pelo GRUB dentro do v86
+- **MS-DOS 6.22**: prompt C:\>, todos os utilitários, CD-ROM em R:
+- **Windows 1.01**: MS-DOS Executive em 640×350 (EGA), programas clássicos
+- **Windows 2.03**: primeiro Windows com janelas sobrepostas e ícones no desktop
+- **Windows 3.11**: instalado dos disquetes originais, roda em 640×480 (VGA)
+- **NovaOS**: SO x86 de 32 bits com interface gráfica VBE 1280×720
+- **Tiny Core Linux**: distribuição ultraleve com FLWM
+- **KolibriOS**: SO escrito 100% em Assembly x86, interface gráfica completa
+- **MenuetOS**: SO multitarefa preemptivo em Assembly x86
+
+**Funcionalidades:**
+- **gerenciador de arquivos no `C:`, `A:` e `B:`**: lista, baixa, envia, **baixa por link**,
+  cria pasta e apaga; extração automática de ZIPs
+- **o mouse dentro de programas DOS**: o `EDIT` abre menu por clique (driver `MOUSE.COM` 8.20)
+- **programas que travavam no emulador próprio**: QBASIC (x87), SCANDISK (x87), EDIT, FDISK
+- **teclado virtual mobile**: layouts ABC/123/F-keys, atalhos DOS, feedback haptic
+- **modo duo**: dois PCs lado a lado para comparação
+- **snapshots**: salvar/restaurar estado completo da máquina (RAM + disco)
+- tela 80×25 com a fonte VGA real e cores CGA; tela cheia; até 256 MB de RAM
 
 ## Como a interface é customizada
 
-O v86 só é motor: você dá um `screen_container` e ele desenha dentro. A interface do reDOS é
+O v86 só é motor: você dá um `screen_container` e ele desenha dentro. A interface do WereBOX é
 só isso em volta — todo o resto (`ui/`) é nosso e é onde se mexe: o visual em `ui/estilo.css`
 (tema, cores, fonte, scanlines: tudo variável CSS), e os painéis em `ui/paineis/`.
 
@@ -424,12 +496,12 @@ Detalhe que custou uma sessão de depuração: o `SyncBuffer.get()` do v86 **exi
 A interface expõe o que ela mesma usa, para automatizar/testar do console do navegador:
 
 ```js
-redos.emulator            // a instância do v86
-redos.logs.lista()        // as linhas do log
-redos.abrirPainel("arquivos")
-redos.disco.montar()      // o FAT do C: montado agora
-redos.disco.montar().gravar(0, "OI.TXT", new TextEncoder().encode("oi"))
-redos.disco.salvar()      // grava a imagem do perfil (POST /emulator/__save)
+werebox.emulator            // a instância do v86
+werebox.logs.lista()        // as linhas do log
+werebox.abrirPainel("arquivos")
+werebox.disco.montar()      // o FAT do C: montado agora
+werebox.disco.montar().gravar(0, "OI.TXT", new TextEncoder().encode("oi"))
+werebox.disco.salvar()      // grava a imagem do perfil (POST /emulator/__save)
 ```
 
 ## Licenças e etiqueta

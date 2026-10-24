@@ -160,6 +160,20 @@ try {
     check(r.status === 302, "raiz responde 302");
     check(r.headers.get("location") === `/emulator/?${consulta}`, "query do link e' preservada no redirect");
   }
+
+  secao("modo duo na pagina normal");
+  {
+    const r = await fetch(`${baseProxy}/?duo=win101,win203`, { redirect: "manual" });
+    check(r.status === 302, "raiz com ?duo= responde 302");
+    check(r.headers.get("location") === "/emulator/?duo=win101,win203", "?duo= e' preservado no redirect");
+  }
+  {
+    const r = await fetch(`${baseProxy}/emulator/?duo=win101,win203`);
+    const html = await r.text();
+    check(r.status === 200, "a pagina normal responde 200");
+    check(/ui\/app\.mjs/.test(html), "serve a mesma index.html/app.mjs");
+    check(!/duo\.html/.test(html) && !/ui\/duo\.css/.test(html), "sem pagina separada e sem css extra");
+  }
 } finally {
   filho.kill();
   origem.close();

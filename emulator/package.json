@@ -17,8 +17,9 @@
     "test:zip": "node tests/zip.test.mjs",
     "test:download": "node tests/download.test.mjs",
     "test:midias": "node tests/midias.test.mjs",
+    "test:duo": "node tests/duo.test.mjs",
     "test:serve": "node tests/serve-download.test.mjs",
-    "test:tudo": "node autoral/tests/run.js && node tests/fat.test.mjs && node tests/zip.test.mjs && node tests/download.test.mjs && node tests/midias.test.mjs && node tests/serve-download.test.mjs"
+    "test:tudo": "node autoral/tests/run.js && node tests/fat.test.mjs && node tests/zip.test.mjs && node tests/download.test.mjs && node tests/midias.test.mjs && node tests/duo.test.mjs && node tests/serve-download.test.mjs"
   },
   "dependencies": {
     "v86": "^0.5.471"

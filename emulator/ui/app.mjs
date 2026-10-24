@@ -15,6 +15,7 @@ import { BootSelector } from "./boot-selector.mjs";
 import { BootLoader } from "./boot-loader.mjs";
 import { instalarGovernador, pararGovernador, lerAlvo, definirAlvo, alvoAtual, ativarGovernador, desativarGovernador } from "./velocidade.mjs";
 import { baixarLinkParaDisco, lerPedidoDownload, paramsDaPagina, pausarMaquina, unidadeDeDownload } from "./transferencia.mjs";
+import * as tecladoMobile from "./teclado-mobile.mjs";
 
 /* ------------------------------------------------------------------- ajustes */
 // O que pedimos ao v86. A aba "Machine > Configuração" mostra isso ao vivo.
@@ -65,6 +66,7 @@ const gavetaTitulo = $("#gaveta-titulo");
 const gavetaCorpo = $("#gaveta-corpo");
 
 let em = null;
+let pronto = false;
 let limparPainel = null;
 let watchdogGrub = null;
 let downloadPendente = null;
@@ -154,6 +156,7 @@ function boot() {
   BootLoader.mostrar(screenEl, sistemaAtual?.name || "WereBOX");
   const novoEm = new V86({ ...AJUSTES, screen_container: screenEl, screen: { ...AJUSTES.screen } });
   em = novoEm;
+  pronto = false;
   // O limitador é instalado já, mas fica desligado durante o boot: o
   // controlador de disquete e a inicialização do Windows 3.11 são sensíveis a
   // pausas no meio da leitura. `acompanhar*`/`esperarPrompt` ligam quando o
@@ -193,6 +196,7 @@ function boot() {
   });
   novoEm.add_listener("emulator-loaded", () => {
     if (!vivo()) return;
+    pronto = true;
     BootLoader.concluir();
     // O objeto interno do v86 só existe depois que as imagens são carregadas;
     // é aqui que o limitador de velocidade pode ser instalado de verdade.
@@ -223,9 +227,12 @@ function boot() {
     // Se a pagina foi aberta com ?download=..., o disco ja' esta' carregado:
     // busca o arquivo, grava no FAT e reinicia.
     processarDownloadPendente();
+    // Instala o teclado virtual mobile
+    tecladoMobile.instalar(app, novoEm);
   });
   novoEm.add_listener("emulator-started", () => {
     if (!vivo()) return;
+    pronto = true;
     prepararGovernador();
     if (sistemaAtual?.bootloader === "grub") {
       // Quem escolhe o sistema agora e' o GRUB de verdade, dentro da tela do PC.
@@ -327,6 +334,7 @@ async function teardown() {
   BootLoader.remover();
   const velho = em;
   em = null;
+  pronto = false;
   if (velho) {
     pararGovernador(velho);
     try { await velho.destroy(); } catch { /* ignore */ }
@@ -846,11 +854,26 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   
+  // Fecha teclado mobile se estiver aberto
+  if (tecladoMobile.estaVisivel()) {
+    tecladoMobile.esconder();
+    e.preventDefault();
+    return;
+  }
+  
   // Depois fecha menus e painéis
   if (!menuEl.hidden) { menuEl.hidden = true; abaMachine.setAttribute("aria-expanded", "false"); return; }
   if (!gaveta.hidden) { fecharPainel(); return; }
   if (app.classList.contains("pseudo")) sairTelaCheia();
 }, true);
+
+// Ctrl+K ou Cmd+K abre/fecha o teclado mobile
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    tecladoMobile.toggle();
+  }
+});
 
 // clicar na tela captura o mouse (pointer lock) para sincronização perfeita
 telaArea.addEventListener("click", async () => {
@@ -931,6 +954,9 @@ async function iniciar() {
   // ?system=msdos622=download'https://...' (ver transferencia.mjs).
   const params = paramsDaPagina(location.search);
 
+  // iframe do modo duo: sem barra de ferramentas, a tela ocupa o quadro inteiro.
+  if (params.get("embed") === "1") app.classList.add("embed");
+
   downloadPendente = lerPedidoDownload(params);
   if (downloadPendente) log(`download automático na fila: ${downloadPendente.url}`);
 
@@ -964,13 +990,23 @@ async function iniciar() {
   BootSelector.mostrar(iniciarPerfil);
 }
 
-iniciar();
+// ?duo=id1,id2 entra no mesmo #app: o duo.mjs esconde a barra/palco do PC unico
+// e monta dois iframes (cada um com ?embed=1). Nao existe pagina separada.
+const paramsEntrada = paramsDaPagina(location.search);
+if (paramsEntrada.get("duo")) {
+  import("./duo.mjs")
+    .then(({ iniciarDuo }) => iniciarDuo())
+    .catch((e) => aviso(`não consegui abrir o modo duo: ${e.message}`));
+} else {
+  iniciar();
+}
 
 window.addEventListener("beforeunload", teardown);
-setInterval(pintarBotaoPausa, 1500);
+if (!paramsEntrada.get("duo")) setInterval(pintarBotaoPausa, 1500);
 
 window.redos = {
   get emulator() { return em; },
+  get pronto() { return pronto; },
   boot, teardown, abrirPainel, fecharPainel, logs, ctx,
   get ultimaLinha() { return em ? ultimaLinhaTela(em) : ""; },
   // API de automação (o painel de arquivos usa exatamente isto por baixo)
