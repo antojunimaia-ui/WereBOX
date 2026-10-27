@@ -7,7 +7,7 @@
 Sistemas operacionais clássicos e experimentais rodando de verdade, com interface própria, menu GNU GRUB 2.06 real e motor x86 em WebAssembly.
 
 [![v86](https://img.shields.io/badge/powered%20by-v86-blue)](https://github.com/copy/v86)
-[![License](https://img.shields.io/badge/license-BSD--2--Clause-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-green)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 
 [🚀 Demo ao Vivo](https://werebox.onrender.com/) • [📖 Documentação](emulator/README.md) • [🐛 Reportar Bug](https://github.com/antojunimaia-ui/WereBOX/issues)
@@ -380,9 +380,12 @@ O `ui/fat.mjs` lê/escreve **FAT12 e FAT16** diretamente nos `SyncBuffer` do v86
 
 ### Este Projeto
 
-**WereBOX Interface e Ferramentas:** Desenvolvidas como código aberto.
+**WereBOX Interface e Ferramentas**
 
-**Código fonte:** Disponível em `emulator/ui/`, `emulator/tools/` e `emulator/tests/`.
+- **Licença:** BSD 3-Clause License
+- **Copyright:** © 2026 antojunimaia-ui
+- **Código fonte:** Disponível em `emulator/ui/`, `emulator/tools/` e `emulator/tests/`
+- **Arquivo de licença:** [LICENSE](LICENSE)
 
 ---
 

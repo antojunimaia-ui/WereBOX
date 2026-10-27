@@ -3,6 +3,16 @@
   "version": "0.3.0",
   "description": "WereBOX — Máquinas virtuais e sistemas operacionais retrô no navegador",
   "type": "module",
+  "author": "antojunimaia-ui",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antojunimaia-ui/WereBOX.git"
+  },
+  "homepage": "https://werebox.onrender.com",
+  "bugs": {
+    "url": "https://github.com/antojunimaia-ui/WereBOX/issues"
+  },
   "scripts": {
     "start": "node tools/setup-v86.mjs && node tools/serve.mjs",
     "v86": "node tools/setup-v86.mjs",
