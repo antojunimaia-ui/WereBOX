@@ -11,6 +11,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 const port = Number(process.env.PORT || process.argv[2] || 8123);
 
+// Modo de segurança: desabilita endpoints sensíveis em produção (Render, etc.)
+// Define NODE_ENV=production para desabilitar __download e __save
+const isProducao = process.env.NODE_ENV === "production";
+
 // ---------------------------------------------------------------- POST /__save
 // Canal de mao dupla da bancada: a pagina de preparo do disco manda a imagem ja
 // formatada pelo DOS real (FORMAT/SYS/XCOPY) e a gente grava no repo.
@@ -138,6 +142,13 @@ const mimeFor = (f) => MIME[path.extname(f).toLowerCase()] || "application/octet
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
 
+  // Bloqueia endpoints sensíveis em produção
+  if (isProducao && (url.pathname === "/emulator/__save" || url.pathname === "/emulator/__download")) {
+    res.writeHead(403, { "content-type": "text/plain; charset=utf-8" })
+       .end("Endpoint desabilitado em produção. Use apenas localmente (NODE_ENV != production).");
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/emulator/__save") {
     // O nome pode ser um caminho relativo a raiz do repo (ex.:
     // "Systems/MS-DOS 6.22/c.img"). Os nomes antigos continuam aceitos para
@@ -203,5 +214,10 @@ http.createServer((req, res) => {
 }).listen(port, "0.0.0.0", () => {
   console.log(`WereBOX — servidor escutando na porta ${port}`);
   console.log(`  interface  ->  http://localhost:${port}/emulator/`);
-  console.log(`  download   ->  /emulator/__download (proxy local; nao exponha na internet)`);
+  if (isProducao) {
+    console.log(`  [PRODUÇÃO] Endpoints __download e __save DESABILITADOS por segurança`);
+  } else {
+    console.log(`  download   ->  /emulator/__download (apenas local; NODE_ENV != production)`);
+    console.log(`  save       ->  /emulator/__save (apenas local; NODE_ENV != production)`);
+  }
 });

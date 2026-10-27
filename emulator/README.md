@@ -151,7 +151,7 @@ Na barra: a aba **Machine**, os comandos rápidos (`ver`, `dir`, `mem` — digit
 
 | Opção | O que faz |
 | --- | --- |
-| **Configuração** | a ficha da máquina ao vivo: estado, velocidade (M instruções/s do contador do v86), **limite de velocidade** (286/386SX/386DX/486/máxima), RAM/vídeo, **mouse** (há driver de pé?), ordem de boot, disco de boot do GRUB (`hda`), geometria/partição/FAT do `C:` (que no perfil padrão é o `hdb`), o que tem dentro do `C:`, versão do v86 e tamanho de cada arquivo (wasm, BIOS, ISO). Com botões para baixar a imagem do C:, **salvar o C: no projeto** (grava na imagem do perfil: `c.img`, `msdos.img`, `win203.img`, `win311hd.img`…), pausar e reiniciar. |
+| **Configuração** | a ficha da máquina ao vivo: estado, velocidade (M instruções/s do contador do v86), **limite de velocidade** (286/386SX/386DX/486/máxima), RAM/vídeo, **mouse** (há driver de pé?), ordem de boot, disco de boot do GRUB (`hda`), geometria/partição/FAT do `C:` (que no perfil padrão é o `hdb`), o que tem dentro do `C:`, versão do v86 e tamanho de cada arquivo (wasm, BIOS, ISO). Com botões para baixar a imagem do C:, **salvar o C: no projeto** (grava na imagem do perfil: `c.img`, `msdos.img`, `win203.img`, `win311hd.img`… — ⚠️ apenas local), pausar e reiniciar. |
 | **Criar snapshot** | `em.save_state()` (RAM + dispositivos + **o disco**) num nome que você escolhe, com miniatura da tela. Dá uns 22 MB comprimidos e vai para o IndexedDB — sobrevive ao F5. |
 | **Selecionar snapshot** | a lista com miniatura, data, tamanho e o prompt que estava na tela: **restaurar**, baixar (`.v86state`) ou apagar. Também importa arquivo `.v86state`. |
 | **Gerenciador de arquivos** | os arquivos da própria máquina, no `C:` (`c.img` no GRUB, `msdos.img` no perfil direto do MS-DOS, `win311hd.img` no do Windows 3.11) e no `A:` (a imagem anexada como `fda`: `win101.img` no GRUB/Windows 1.01 ou `win311-boot.img` no perfil direto do Windows 3.11): navegar, baixar, **enviar arquivo**, **baixar um arquivo por link**, criar pasta e apagar — mexendo no FAT de verdade. Ele abre sozinho no disco do sistema que está rodando (C: no MS-DOS e no Windows 3.11; A: no Windows 1.01 — no GRUB, conforme a entrada escolhida) e tem botões **C:/A:** para trocar na mão (ver abaixo). |
@@ -212,7 +212,9 @@ npm run test:serve     # 21: o proxy /emulator/__download e a rota do duo contra
 npm run test:tudo      # tudo acima + os 31 testes do emulador aposentado
 ```
 
-### Baixar um arquivo por link
+### Baixar um arquivo por link (⚠️ Apenas Local)
+
+**Nota:** Esta funcionalidade **só funciona localmente** (`NODE_ENV != production`). Em produção (Render, etc.), os endpoints de download são desabilitados por segurança.
 
 Dá para mandar um arquivo para dentro da máquina sem baixá-lo no host: no
 **Gerenciador de arquivos**, cole o **link direto** (o que já dispara o download, não a
@@ -221,7 +223,7 @@ interface pede ao próprio servidor que busque o arquivo (para contornar CORS), 
 bytes no FAT da unidade aberta e **reinicia a máquina** para o sistema reler o disco. O
 arquivo **não é executado no host** — ele só entra na imagem do PC emulado.
 
-O mesmo fluxo funciona por URL compartilhável, com o sistema já escolhido:
+O mesmo fluxo funciona por URL compartilhável, com o sistema já escolhido **(apenas local)**:
 
 ```
 /?system=msdos622&download=https%3A%2F%2Fexemplo.com%2Farquivo.exe
@@ -285,10 +287,11 @@ que a máquina reiniciar. O `ui/transferencia.mjs` pausa a CPU antes de gravar, 
 o FAT (o sistema pode ter escrito enquanto o download corria) e o `ui/app.mjs` chama
 `em.restart()` no fim.
 
-> O proxy `GET /emulator/__download?url=...&max=...` aceita só `http://` e `https://`,
-> recusa links com usuário/senha, limita o arquivo a **64 MB** e a busca a **60 s**. O
-> servidor escuta em `0.0.0.0` e o proxy **não tem autenticação** — não exponha essa
-> porta na internet.
+> **Segurança do proxy:** O endpoint `GET /emulator/__download?url=...&max=...` aceita só 
+> `http://` e `https://`, recusa links com usuário/senha, limita o arquivo a **64 MB** e a 
+> busca a **60 s**. Por motivos de segurança, este endpoint é **automaticamente desabilitado 
+> quando `NODE_ENV=production`**, tornando seguro hospedar o WereBOX em serviços públicos 
+> (Render, Vercel, etc.). Use apenas localmente para desenvolvimento e testes.
 
 ### Dois PCs lado a lado (`?duo=`)
 
